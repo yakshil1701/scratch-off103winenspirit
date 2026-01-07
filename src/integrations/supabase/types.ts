@@ -14,7 +14,83 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      daily_box_sales: {
+        Row: {
+          box_number: number
+          created_at: string
+          id: string
+          last_scanned_ticket_number: number | null
+          summary_id: string
+          ticket_price: number
+          tickets_sold: number
+          total_amount_sold: number
+          updated_at: string
+        }
+        Insert: {
+          box_number: number
+          created_at?: string
+          id?: string
+          last_scanned_ticket_number?: number | null
+          summary_id: string
+          ticket_price: number
+          tickets_sold?: number
+          total_amount_sold?: number
+          updated_at?: string
+        }
+        Update: {
+          box_number?: number
+          created_at?: string
+          id?: string
+          last_scanned_ticket_number?: number | null
+          summary_id?: string
+          ticket_price?: number
+          tickets_sold?: number
+          total_amount_sold?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "daily_box_sales_summary_id_fkey"
+            columns: ["summary_id"]
+            isOneToOne: false
+            referencedRelation: "daily_summaries"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      daily_summaries: {
+        Row: {
+          active_boxes: number
+          created_at: string
+          day_of_week: string
+          id: string
+          summary_date: string
+          total_amount_sold: number
+          total_tickets_sold: number
+          updated_at: string
+        }
+        Insert: {
+          active_boxes?: number
+          created_at?: string
+          day_of_week: string
+          id?: string
+          summary_date: string
+          total_amount_sold?: number
+          total_tickets_sold?: number
+          updated_at?: string
+        }
+        Update: {
+          active_boxes?: number
+          created_at?: string
+          day_of_week?: string
+          id?: string
+          summary_date?: string
+          total_amount_sold?: number
+          total_tickets_sold?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
