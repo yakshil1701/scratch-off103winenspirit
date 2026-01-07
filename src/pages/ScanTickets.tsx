@@ -5,14 +5,26 @@ import { BoxSelector } from '@/components/BoxSelector';
 import { ScanFeedback } from '@/components/ScanFeedback';
 import { ScanHistory } from '@/components/ScanHistory';
 import { useTicketStore } from '@/hooks/useTicketStore';
-import { DollarSign, Ticket } from 'lucide-react';
+import { DollarSign, Ticket, Edit3 } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 
 const ScanTickets = () => {
-  const { boxes, processBarcode, scanHistory, lastScanResult, lastError, getTotals } = useTicketStore();
+  const { boxes, processBarcode, processManualEntry, scanHistory, lastScanResult, lastError, getTotals } = useTicketStore();
   const [selectedBox, setSelectedBox] = useState<number | null>(null);
   const [autoAdvance, setAutoAdvance] = useState(false);
+  const [manualEntryOpen, setManualEntryOpen] = useState(false);
+  const [manualTicketNumber, setManualTicketNumber] = useState('');
   const totals = getTotals();
 
   const configuredBoxes = boxes.filter(b => b.isConfigured).sort((a, b) => a.boxNumber - b.boxNumber);
@@ -38,6 +50,26 @@ const ScanTickets = () => {
         setSelectedBox(nextBox);
       }
     }
+  };
+
+  const handleManualEntry = () => {
+    if (selectedBox === null) return;
+    
+    const ticketNum = parseInt(manualTicketNumber, 10);
+    if (isNaN(ticketNum)) return;
+    
+    const { result } = processManualEntry(ticketNum, selectedBox);
+    
+    // Auto-advance only on successful entry
+    if (autoAdvance && result?.success) {
+      const nextBox = getNextBox(selectedBox);
+      if (nextBox !== null) {
+        setSelectedBox(nextBox);
+      }
+    }
+    
+    setManualEntryOpen(false);
+    setManualTicketNumber('');
   };
 
   const selectedBoxData = boxes.find(b => b.boxNumber === selectedBox);
@@ -112,9 +144,22 @@ const ScanTickets = () => {
 
         {/* Scan Input */}
         <div className="stat-card">
-          <label className="block text-sm font-semibold text-muted-foreground mb-3">
-            Barcode Scanner Input
-          </label>
+          <div className="flex items-center justify-between mb-3">
+            <label className="block text-sm font-semibold text-muted-foreground">
+              Barcode Scanner Input
+            </label>
+            {selectedBox !== null && selectedBoxData && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setManualEntryOpen(true)}
+                className="gap-2"
+              >
+                <Edit3 className="w-4 h-4" />
+                Manual Entry
+              </Button>
+            )}
+          </div>
           <ScanInput
             onScan={handleScan}
             disabled={selectedBox === null}
@@ -131,6 +176,51 @@ const ScanTickets = () => {
 
         {/* Scan History */}
         <ScanHistory history={scanHistory} />
+
+        {/* Manual Entry Dialog */}
+        <Dialog open={manualEntryOpen} onOpenChange={setManualEntryOpen}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Manual Ticket Entry</DialogTitle>
+              <DialogDescription>
+                Enter the current ticket number for Box {selectedBox}. 
+                Use this when a box is empty (enter 0) or when you can't scan the barcode.
+                {selectedBoxData && (
+                  <span className="block mt-2 text-foreground">
+                    Current position: #{selectedBoxData.lastScannedTicketNumber ?? selectedBoxData.startingTicketNumber}
+                  </span>
+                )}
+              </DialogDescription>
+            </DialogHeader>
+            <div className="flex flex-col gap-4 py-4">
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="ticket-number">Ticket Number</Label>
+                <Input
+                  id="ticket-number"
+                  type="number"
+                  min="0"
+                  placeholder="Enter ticket number (e.g., 0 for empty box)"
+                  value={manualTicketNumber}
+                  onChange={(e) => setManualTicketNumber(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      handleManualEntry();
+                    }
+                  }}
+                  autoFocus
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setManualEntryOpen(false)}>
+                Cancel
+              </Button>
+              <Button onClick={handleManualEntry} disabled={manualTicketNumber === ''}>
+                Submit
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </Layout>
   );
