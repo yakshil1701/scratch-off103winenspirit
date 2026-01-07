@@ -131,27 +131,17 @@ export const useTicketStore = () => {
     return parseInt(ticketStr, 10);
   };
 
-  const processBarcode = useCallback((barcode: string, selectedBoxNumber: number): { result?: ScanResult; error?: ScanError } => {
-    setLastError(null);
-    setLastScanResult(null);
-
+  const validateAndProcessTicket = useCallback((
+    ticketNumber: number, 
+    selectedBoxNumber: number,
+    isManualEntry: boolean = false
+  ): { result?: ScanResult; error?: ScanError } => {
     const box = boxes.find(b => b.boxNumber === selectedBoxNumber);
     
     if (!box || !box.isConfigured) {
       const error: ScanError = {
         type: 'box_not_configured',
         message: `Box ${selectedBoxNumber} is not configured. Please set it up first.`
-      };
-      setLastError(error);
-      return { error };
-    }
-
-    const ticketNumber = extractTicketNumber(barcode);
-    
-    if (ticketNumber === null) {
-      const error: ScanError = {
-        type: 'invalid_barcode',
-        message: 'Invalid barcode format. Expected 20 digits.'
       };
       setLastError(error);
       return { error };
@@ -215,7 +205,9 @@ export const useTicketStore = () => {
       ticketNumber,
       ticketsSold: ticketsSoldThisScan,
       amountSold,
-      message: `Sold ${ticketsSoldThisScan} tickets for $${amountSold.toFixed(2)}`,
+      message: isManualEntry 
+        ? `Manual entry: Sold ${ticketsSoldThisScan} tickets for $${amountSold.toFixed(2)}`
+        : `Sold ${ticketsSoldThisScan} tickets for $${amountSold.toFixed(2)}`,
       timestamp: new Date(),
     };
 
@@ -224,6 +216,41 @@ export const useTicketStore = () => {
 
     return { result };
   }, [boxes]);
+
+  const processBarcode = useCallback((barcode: string, selectedBoxNumber: number): { result?: ScanResult; error?: ScanError } => {
+    setLastError(null);
+    setLastScanResult(null);
+
+    const ticketNumber = extractTicketNumber(barcode);
+    
+    if (ticketNumber === null) {
+      const error: ScanError = {
+        type: 'invalid_barcode',
+        message: 'Invalid barcode format. Expected 20 digits.'
+      };
+      setLastError(error);
+      return { error };
+    }
+
+    return validateAndProcessTicket(ticketNumber, selectedBoxNumber, false);
+  }, [validateAndProcessTicket]);
+
+  const processManualEntry = useCallback((ticketNumber: number, selectedBoxNumber: number): { result?: ScanResult; error?: ScanError } => {
+    setLastError(null);
+    setLastScanResult(null);
+
+    // Validate ticket number is non-negative
+    if (ticketNumber < 0 || !Number.isInteger(ticketNumber)) {
+      const error: ScanError = {
+        type: 'invalid_barcode',
+        message: 'Invalid ticket number. Must be a non-negative whole number.'
+      };
+      setLastError(error);
+      return { error };
+    }
+
+    return validateAndProcessTicket(ticketNumber, selectedBoxNumber, true);
+  }, [validateAndProcessTicket]);
 
   const resetDailyCounts = useCallback(() => {
     setBoxes(prev => prev.map(box => {
@@ -266,6 +293,7 @@ export const useTicketStore = () => {
     boxes,
     updateBox,
     processBarcode,
+    processManualEntry,
     resetDailyCounts,
     getConfiguredBoxes,
     getTotals,
