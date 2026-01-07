@@ -1,7 +1,8 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { DailySummary, DailyBoxSale, HistoricalSummaryData } from '@/types/summary';
 import { TicketBox } from '@/types/ticket';
+import { logErrorSecurely } from '@/lib/errorHandler';
 
 const getDayOfWeek = (date: Date): string => {
   return date.toLocaleDateString('en-US', { weekday: 'long' });
@@ -17,6 +18,9 @@ export const useSummaryHistory = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
   const [editedBoxSales, setEditedBoxSales] = useState<DailyBoxSale[]>([]);
+  
+  // Application-level lock to prevent race conditions in save operations
+  const saveLockRef = useRef<Promise<{ success: boolean; message: string }>>(Promise.resolve({ success: true, message: '' }));
 
   // Fetch all historical summaries for filtering
   const fetchSummaryList = useCallback(async () => {
@@ -30,7 +34,7 @@ export const useSummaryHistory = () => {
       if (error) throw error;
       setHistoricalSummaries(data || []);
     } catch (error) {
-      console.error('Error fetching summary list:', error);
+      logErrorSecurely('fetchSummaryList');
     } finally {
       setIsLoading(false);
     }
@@ -71,96 +75,103 @@ export const useSummaryHistory = () => {
       setEditedBoxSales(boxSalesData || []);
       return historicalData;
     } catch (error) {
-      console.error('Error fetching historical summary:', error);
+      logErrorSecurely('fetchHistoricalSummary');
       return null;
     } finally {
       setIsLoading(false);
     }
   }, []);
 
-  // Save today's summary to history (called on reset)
+  // Save today's summary to history (called on reset) - with application-level lock to prevent race conditions
   const saveDailySummary = useCallback(async (boxes: TicketBox[]) => {
-    const today = new Date();
-    const summaryDate = formatDateForDB(today);
-    const dayOfWeek = getDayOfWeek(today);
+    // Queue saves to prevent concurrent execution (race condition prevention)
+    const saveOperation = async (): Promise<{ success: boolean; message: string }> => {
+      const today = new Date();
+      const summaryDate = formatDateForDB(today);
+      const dayOfWeek = getDayOfWeek(today);
 
-    const configuredBoxes = boxes.filter(b => b.isConfigured && b.ticketsSold > 0);
-    
-    if (configuredBoxes.length === 0) {
-      return { success: true, message: 'No sales to save' };
-    }
-
-    const totalTicketsSold = configuredBoxes.reduce((sum, b) => sum + b.ticketsSold, 0);
-    const totalAmountSold = configuredBoxes.reduce((sum, b) => sum + b.totalAmountSold, 0);
-
-    try {
-      // Check if summary exists for today (upsert)
-      const { data: existingSummary } = await supabase
-        .from('daily_summaries')
-        .select('id')
-        .eq('summary_date', summaryDate)
-        .maybeSingle();
-
-      let summaryId: string;
-
-      if (existingSummary) {
-        // Update existing summary
-        const { error: updateError } = await supabase
-          .from('daily_summaries')
-          .update({
-            total_tickets_sold: totalTicketsSold,
-            total_amount_sold: totalAmountSold,
-            active_boxes: configuredBoxes.length,
-          })
-          .eq('id', existingSummary.id);
-
-        if (updateError) throw updateError;
-        summaryId = existingSummary.id;
-
-        // Delete old box sales for this summary
-        await supabase
-          .from('daily_box_sales')
-          .delete()
-          .eq('summary_id', summaryId);
-      } else {
-        // Insert new summary
-        const { data: newSummary, error: insertError } = await supabase
-          .from('daily_summaries')
-          .insert({
-            summary_date: summaryDate,
-            day_of_week: dayOfWeek,
-            total_tickets_sold: totalTicketsSold,
-            total_amount_sold: totalAmountSold,
-            active_boxes: configuredBoxes.length,
-          })
-          .select()
-          .single();
-
-        if (insertError) throw insertError;
-        summaryId = newSummary.id;
+      const configuredBoxes = boxes.filter(b => b.isConfigured && b.ticketsSold > 0);
+      
+      if (configuredBoxes.length === 0) {
+        return { success: true, message: 'No sales to save' };
       }
 
-      // Insert box sales
-      const boxSalesData = configuredBoxes.map(box => ({
-        summary_id: summaryId,
-        box_number: box.boxNumber,
-        ticket_price: box.ticketPrice,
-        last_scanned_ticket_number: box.lastScannedTicketNumber,
-        tickets_sold: box.ticketsSold,
-        total_amount_sold: box.totalAmountSold,
-      }));
+      const totalTicketsSold = configuredBoxes.reduce((sum, b) => sum + b.ticketsSold, 0);
+      const totalAmountSold = configuredBoxes.reduce((sum, b) => sum + b.totalAmountSold, 0);
 
-      const { error: boxSalesError } = await supabase
-        .from('daily_box_sales')
-        .insert(boxSalesData);
+      try {
+        // Check if summary exists for today (upsert)
+        const { data: existingSummary } = await supabase
+          .from('daily_summaries')
+          .select('id')
+          .eq('summary_date', summaryDate)
+          .maybeSingle();
 
-      if (boxSalesError) throw boxSalesError;
+        let summaryId: string;
 
-      return { success: true, message: 'Summary saved to history' };
-    } catch (error) {
-      console.error('Error saving daily summary:', error);
-      return { success: false, message: 'Failed to save summary' };
-    }
+        if (existingSummary) {
+          // Update existing summary
+          const { error: updateError } = await supabase
+            .from('daily_summaries')
+            .update({
+              total_tickets_sold: totalTicketsSold,
+              total_amount_sold: totalAmountSold,
+              active_boxes: configuredBoxes.length,
+            })
+            .eq('id', existingSummary.id);
+
+          if (updateError) throw updateError;
+          summaryId = existingSummary.id;
+
+          // Delete old box sales for this summary
+          await supabase
+            .from('daily_box_sales')
+            .delete()
+            .eq('summary_id', summaryId);
+        } else {
+          // Insert new summary
+          const { data: newSummary, error: insertError } = await supabase
+            .from('daily_summaries')
+            .insert({
+              summary_date: summaryDate,
+              day_of_week: dayOfWeek,
+              total_tickets_sold: totalTicketsSold,
+              total_amount_sold: totalAmountSold,
+              active_boxes: configuredBoxes.length,
+            })
+            .select()
+            .single();
+
+          if (insertError) throw insertError;
+          summaryId = newSummary.id;
+        }
+
+        // Insert box sales
+        const boxSalesData = configuredBoxes.map(box => ({
+          summary_id: summaryId,
+          box_number: box.boxNumber,
+          ticket_price: box.ticketPrice,
+          last_scanned_ticket_number: box.lastScannedTicketNumber,
+          tickets_sold: box.ticketsSold,
+          total_amount_sold: box.totalAmountSold,
+        }));
+
+        const { error: boxSalesError } = await supabase
+          .from('daily_box_sales')
+          .insert(boxSalesData);
+
+        if (boxSalesError) throw boxSalesError;
+
+        return { success: true, message: 'Summary saved to history' };
+      } catch {
+        logErrorSecurely('saveDailySummary');
+        return { success: false, message: 'Failed to save summary' };
+      }
+    };
+
+    // Chain the save operation to prevent concurrent execution
+    saveLockRef.current = saveLockRef.current.then(saveOperation).catch(() => saveOperation());
+    return saveLockRef.current;
   }, []);
 
   // Enter edit mode for historical data
@@ -228,7 +239,7 @@ export const useSummaryHistory = () => {
 
       return { success: true, message: 'Changes saved successfully' };
     } catch (error) {
-      console.error('Error saving historical edits:', error);
+      logErrorSecurely('saveHistoricalEdits');
       return { success: false, message: 'Failed to save changes' };
     }
   }, [selectedHistoricalData, editedBoxSales, fetchHistoricalSummary]);
