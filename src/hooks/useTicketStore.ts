@@ -2,9 +2,12 @@ import { useState, useEffect, useCallback } from 'react';
 import { TicketBox, ScanResult, ScanError } from '@/types/ticket';
 import { logErrorSecurely } from '@/lib/errorHandler';
 
-// Use sessionStorage instead of localStorage for security - data clears when tab closes
-const STORAGE_KEY = 'scratchoff-ticket-data';
+// Use localStorage for box configuration persistence across days
+const CONFIG_STORAGE_KEY = 'scratchoff-box-config';
+const DAILY_STORAGE_KEY = 'scratchoff-daily-data';
 const MAX_BOXES = 70;
+
+const getTodayDateString = () => new Date().toISOString().split('T')[0];
 
 const createInitialBoxes = (): TicketBox[] => {
   return Array.from({ length: MAX_BOXES }, (_, i) => ({
@@ -20,28 +23,90 @@ const createInitialBoxes = (): TicketBox[] => {
   }));
 };
 
-export const useTicketStore = () => {
-  const [boxes, setBoxes] = useState<TicketBox[]>(() => {
-    try {
-      const stored = sessionStorage.getItem(STORAGE_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        return parsed.boxes || createInitialBoxes();
-      }
-    } catch {
-      logErrorSecurely('loadStoredData');
+interface DailyData {
+  date: string;
+  dailyCounts: Record<number, { ticketsSold: number; totalAmountSold: number }>;
+}
+
+const loadBoxes = (): TicketBox[] => {
+  try {
+    // Load persisted box configuration
+    const configStored = localStorage.getItem(CONFIG_STORAGE_KEY);
+    const dailyStored = localStorage.getItem(DAILY_STORAGE_KEY);
+    
+    if (!configStored) {
+      return createInitialBoxes();
     }
+    
+    const configParsed = JSON.parse(configStored);
+    let boxes: TicketBox[] = configParsed.boxes || createInitialBoxes();
+    
+    // Check if we need to reset daily counts (new day)
+    const today = getTodayDateString();
+    let dailyData: DailyData | null = null;
+    
+    if (dailyStored) {
+      dailyData = JSON.parse(dailyStored);
+    }
+    
+    if (!dailyData || dailyData.date !== today) {
+      // New day: reset daily counts but preserve lastScannedTicketNumber
+      boxes = boxes.map(box => ({
+        ...box,
+        ticketsSold: 0,
+        totalAmountSold: 0,
+      }));
+      // Save the reset state
+      localStorage.setItem(DAILY_STORAGE_KEY, JSON.stringify({
+        date: today,
+        dailyCounts: {},
+      }));
+    } else {
+      // Same day: restore daily counts
+      boxes = boxes.map(box => {
+        const dailyCounts = dailyData?.dailyCounts[box.boxNumber];
+        if (dailyCounts) {
+          return {
+            ...box,
+            ticketsSold: dailyCounts.ticketsSold,
+            totalAmountSold: dailyCounts.totalAmountSold,
+          };
+        }
+        return box;
+      });
+    }
+    
+    return boxes;
+  } catch {
+    logErrorSecurely('loadStoredData');
     return createInitialBoxes();
-  });
+  }
+};
+
+export const useTicketStore = () => {
+  const [boxes, setBoxes] = useState<TicketBox[]>(loadBoxes);
 
   const [scanHistory, setScanHistory] = useState<ScanResult[]>([]);
   const [lastScanResult, setLastScanResult] = useState<ScanResult | null>(null);
   const [lastError, setLastError] = useState<ScanError | null>(null);
 
-  // Persist to sessionStorage (clears when browser tab closes for security)
+  // Persist box configuration to localStorage
   useEffect(() => {
     try {
-      sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ boxes }));
+      localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify({ boxes }));
+      
+      // Also update daily counts
+      const today = getTodayDateString();
+      const dailyCounts: Record<number, { ticketsSold: number; totalAmountSold: number }> = {};
+      boxes.forEach(box => {
+        if (box.ticketsSold > 0 || box.totalAmountSold > 0) {
+          dailyCounts[box.boxNumber] = {
+            ticketsSold: box.ticketsSold,
+            totalAmountSold: box.totalAmountSold,
+          };
+        }
+      });
+      localStorage.setItem(DAILY_STORAGE_KEY, JSON.stringify({ date: today, dailyCounts }));
     } catch {
       logErrorSecurely('saveStoredData');
     }
