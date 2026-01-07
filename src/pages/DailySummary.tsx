@@ -118,6 +118,11 @@ const DailySummary = () => {
     }
   };
 
+  const handleResetWithoutSaving = () => {
+    resetDailyCounts();
+    toast.success('Day reset successfully. No summary was saved.');
+  };
+
   const handleSelectHistoricalDate = (date: string) => {
     fetchHistoricalSummary(date);
     setShowHistory(true);
@@ -194,14 +199,20 @@ const DailySummary = () => {
                   <AlertDialogHeader>
                     <AlertDialogTitle className="text-xl">Reset Daily Counts?</AlertDialogTitle>
                     <AlertDialogDescription className="text-base">
-                      This will save today's summary to history and clear all ticket counts for a new day.
-                      Box configurations will be preserved. This action cannot be undone.
+                      Choose how you want to reset the day. Box configurations will be preserved.
+                      This action cannot be undone.
                     </AlertDialogDescription>
                   </AlertDialogHeader>
-                  <AlertDialogFooter>
+                  <AlertDialogFooter className="flex-col sm:flex-row gap-2">
                     <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction
+                      onClick={handleResetWithoutSaving}
+                      className="bg-muted text-muted-foreground hover:bg-muted/80"
+                    >
+                      Reset Without Saving
+                    </AlertDialogAction>
                     <AlertDialogAction onClick={handleResetDay}>
-                      Yes, Reset & Save
+                      Reset & Save
                     </AlertDialogAction>
                   </AlertDialogFooter>
                 </AlertDialogContent>
