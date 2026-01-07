@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { TicketBox, ScanResult, ScanError } from '@/types/ticket';
+import { logErrorSecurely } from '@/lib/errorHandler';
 
+// Use sessionStorage instead of localStorage for security - data clears when tab closes
 const STORAGE_KEY = 'scratchoff-ticket-data';
 const MAX_BOXES = 70;
 
@@ -21,13 +23,13 @@ const createInitialBoxes = (): TicketBox[] => {
 export const useTicketStore = () => {
   const [boxes, setBoxes] = useState<TicketBox[]>(() => {
     try {
-      const stored = localStorage.getItem(STORAGE_KEY);
+      const stored = sessionStorage.getItem(STORAGE_KEY);
       if (stored) {
         const parsed = JSON.parse(stored);
         return parsed.boxes || createInitialBoxes();
       }
-    } catch (e) {
-      console.error('Failed to load stored data:', e);
+    } catch {
+      logErrorSecurely('loadStoredData');
     }
     return createInitialBoxes();
   });
@@ -36,12 +38,12 @@ export const useTicketStore = () => {
   const [lastScanResult, setLastScanResult] = useState<ScanResult | null>(null);
   const [lastError, setLastError] = useState<ScanError | null>(null);
 
-  // Persist to localStorage
+  // Persist to sessionStorage (clears when browser tab closes for security)
   useEffect(() => {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ boxes }));
-    } catch (e) {
-      console.error('Failed to save data:', e);
+      sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ boxes }));
+    } catch {
+      logErrorSecurely('saveStoredData');
     }
   }, [boxes]);
 
