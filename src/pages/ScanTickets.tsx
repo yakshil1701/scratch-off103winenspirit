@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { Layout } from '@/components/Layout';
 import { ScanInput } from '@/components/ScanInput';
 import { BoxSelector } from '@/components/BoxSelector';
@@ -6,17 +6,38 @@ import { ScanFeedback } from '@/components/ScanFeedback';
 import { ScanHistory } from '@/components/ScanHistory';
 import { useTicketStore } from '@/hooks/useTicketStore';
 import { DollarSign, Ticket } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
 
 const ScanTickets = () => {
   const { boxes, processBarcode, scanHistory, lastScanResult, lastError, getTotals } = useTicketStore();
   const [selectedBox, setSelectedBox] = useState<number | null>(null);
+  const [autoAdvance, setAutoAdvance] = useState(false);
   const totals = getTotals();
+
+  const configuredBoxes = boxes.filter(b => b.isConfigured).sort((a, b) => a.boxNumber - b.boxNumber);
+
+  const getNextBox = useCallback((currentBox: number): number | null => {
+    const currentIndex = configuredBoxes.findIndex(b => b.boxNumber === currentBox);
+    if (currentIndex === -1 || currentIndex >= configuredBoxes.length - 1) {
+      return null; // No next box available
+    }
+    return configuredBoxes[currentIndex + 1].boxNumber;
+  }, [configuredBoxes]);
 
   const handleScan = (barcode: string) => {
     if (selectedBox === null) {
       return;
     }
-    processBarcode(barcode, selectedBox);
+    const { result } = processBarcode(barcode, selectedBox);
+    
+    // Auto-advance only on successful scan
+    if (autoAdvance && result?.success) {
+      const nextBox = getNextBox(selectedBox);
+      if (nextBox !== null) {
+        setSelectedBox(nextBox);
+      }
+    }
   };
 
   const selectedBoxData = boxes.find(b => b.boxNumber === selectedBox);
@@ -53,6 +74,20 @@ const ScanTickets = () => {
             selectedBox={selectedBox}
             onSelect={setSelectedBox}
           />
+          
+          {/* Auto-advance toggle */}
+          {configuredBoxes.length > 1 && (
+            <div className="flex items-center gap-3 mt-4 pt-4 border-t border-border">
+              <Switch
+                id="auto-advance"
+                checked={autoAdvance}
+                onCheckedChange={setAutoAdvance}
+              />
+              <Label htmlFor="auto-advance" className="text-sm text-muted-foreground cursor-pointer">
+                Auto-advance to next box after successful scan
+              </Label>
+            </div>
+          )}
         </div>
 
         {/* Selected Box Info */}
