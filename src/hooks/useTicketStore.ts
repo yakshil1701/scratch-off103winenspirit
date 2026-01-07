@@ -226,12 +226,24 @@ export const useTicketStore = () => {
   }, [boxes]);
 
   const resetDailyCounts = useCallback(() => {
-    setBoxes(prev => prev.map(box => ({
-      ...box,
-      ticketsSold: 0,
-      totalAmountSold: 0,
-      lastScannedTicketNumber: null,
-    })));
+    setBoxes(prev => prev.map(box => {
+      // If this box was scanned today, update startingTicketNumber to lastScannedTicketNumber
+      if (box.lastScannedTicketNumber !== null) {
+        return {
+          ...box,
+          startingTicketNumber: box.lastScannedTicketNumber,
+          ticketsSold: 0,
+          totalAmountSold: 0,
+          lastScannedTicketNumber: null,
+        };
+      }
+      // Box wasn't scanned, just reset daily counts
+      return {
+        ...box,
+        ticketsSold: 0,
+        totalAmountSold: 0,
+      };
+    }));
     setScanHistory([]);
     setLastScanResult(null);
     setLastError(null);
