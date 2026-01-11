@@ -86,9 +86,25 @@ export const useSummaryHistory = () => {
   const saveDailySummary = useCallback(async (boxes: TicketBox[]) => {
     // Queue saves to prevent concurrent execution (race condition prevention)
     const saveOperation = async (): Promise<{ success: boolean; message: string }> => {
-      const today = new Date();
-      const summaryDate = formatDateForDB(today);
-      const dayOfWeek = getDayOfWeek(today);
+      // Get the actual business date from localStorage (the date when scanning started)
+      // This ensures we save under the correct date even if the calendar day has changed
+      let businessDate: string;
+      try {
+        const dailyStored = localStorage.getItem('scratchoff-daily-data');
+        if (dailyStored) {
+          const dailyData = JSON.parse(dailyStored);
+          businessDate = dailyData.date;
+        } else {
+          // Fallback to current date if no stored date exists
+          businessDate = new Date().toISOString().split('T')[0];
+        }
+      } catch {
+        businessDate = new Date().toISOString().split('T')[0];
+      }
+
+      const businessDateObj = new Date(businessDate + 'T12:00:00'); // Use noon to avoid timezone issues
+      const summaryDate = businessDate;
+      const dayOfWeek = getDayOfWeek(businessDateObj);
 
       const configuredBoxes = boxes.filter(b => b.isConfigured && b.ticketsSold > 0);
       
