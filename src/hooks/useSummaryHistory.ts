@@ -9,7 +9,10 @@ const getDayOfWeek = (date: Date): string => {
 };
 
 const formatDateForDB = (date: Date): string => {
-  return date.toISOString().split('T')[0];
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 };
 
 export const useSummaryHistory = () => {
@@ -96,10 +99,12 @@ export const useSummaryHistory = () => {
           businessDate = dailyData.date;
         } else {
           // Fallback to current date if no stored date exists
-          businessDate = new Date().toISOString().split('T')[0];
+          const now = new Date();
+          businessDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
         }
       } catch {
-        businessDate = new Date().toISOString().split('T')[0];
+        const now = new Date();
+        businessDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
       }
 
       const businessDateObj = new Date(businessDate + 'T12:00:00'); // Use noon to avoid timezone issues
