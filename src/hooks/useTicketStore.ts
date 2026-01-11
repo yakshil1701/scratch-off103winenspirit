@@ -5,7 +5,6 @@ import { logErrorSecurely } from '@/lib/errorHandler';
 // Use localStorage for box configuration persistence across days
 const CONFIG_STORAGE_KEY = 'scratchoff-box-config';
 const DAILY_STORAGE_KEY = 'scratchoff-daily-data';
-const MAX_BOXES = 70;
 
 const getTodayDateString = () => {
   const now = new Date();
@@ -15,18 +14,21 @@ const getTodayDateString = () => {
   return `${year}-${month}-${day}`;
 };
 
+const createNewBox = (boxNumber: number): TicketBox => ({
+  id: boxNumber,
+  boxNumber,
+  ticketPrice: 0,
+  totalTicketsPerBook: 0,
+  startingTicketNumber: 0,
+  lastScannedTicketNumber: null,
+  ticketsSold: 0,
+  totalAmountSold: 0,
+  isConfigured: false,
+});
+
 const createInitialBoxes = (): TicketBox[] => {
-  return Array.from({ length: MAX_BOXES }, (_, i) => ({
-    id: i + 1,
-    boxNumber: i + 1,
-    ticketPrice: 0,
-    totalTicketsPerBook: 0,
-    startingTicketNumber: 0,
-    lastScannedTicketNumber: null,
-    ticketsSold: 0,
-    totalAmountSold: 0,
-    isConfigured: false,
-  }));
+  // Start with no boxes - user will add as needed
+  return [];
 };
 
 interface DailyData {
@@ -124,6 +126,32 @@ export const useTicketStore = () => {
         ? { ...box, ...updates, isConfigured: true }
         : box
     ));
+  }, []);
+
+  const addBox = useCallback(() => {
+    setBoxes(prev => {
+      // Find the next available box number
+      const existingNumbers = prev.map(b => b.boxNumber);
+      let nextNumber = 1;
+      while (existingNumbers.includes(nextNumber)) {
+        nextNumber++;
+      }
+      return [...prev, createNewBox(nextNumber)].sort((a, b) => a.boxNumber - b.boxNumber);
+    });
+  }, []);
+
+  const addBoxWithNumber = useCallback((boxNumber: number) => {
+    setBoxes(prev => {
+      // Check if box number already exists
+      if (prev.some(b => b.boxNumber === boxNumber)) {
+        return prev;
+      }
+      return [...prev, createNewBox(boxNumber)].sort((a, b) => a.boxNumber - b.boxNumber);
+    });
+  }, []);
+
+  const removeBox = useCallback((boxNumber: number) => {
+    setBoxes(prev => prev.filter(box => box.boxNumber !== boxNumber));
   }, []);
 
   const extractTicketNumber = (barcode: string): number | null => {
@@ -298,6 +326,9 @@ export const useTicketStore = () => {
   return {
     boxes,
     updateBox,
+    addBox,
+    addBoxWithNumber,
+    removeBox,
     processBarcode,
     processManualEntry,
     resetDailyCounts,
