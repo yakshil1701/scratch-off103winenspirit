@@ -17,7 +17,7 @@ export const BoxSelector = ({ boxes, selectedBox, onSelect }: BoxSelectorProps) 
         <Package className="w-12 h-12 text-warning mx-auto mb-3" />
         <h3 className="text-lg font-bold text-foreground mb-1">No Boxes Configured</h3>
         <p className="text-muted-foreground">
-          Go to Box Setup to configure your scratch-off boxes first.
+          Go to Box Setup to add and configure your scratch-off boxes first.
         </p>
       </div>
     );
