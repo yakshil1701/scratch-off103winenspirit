@@ -3,7 +3,7 @@ import { TicketBox } from '@/types/ticket';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
-import { Check, Edit2, X, Package, Trash2 } from 'lucide-react';
+import { Check, Edit2, X, Package, Trash2, BookOpen, Plus } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -20,10 +20,11 @@ interface BoxSetupCardProps {
   box: TicketBox;
   onUpdate: (boxNumber: number, updates: Partial<TicketBox>) => void;
   onRemove: (boxNumber: number) => void;
+  onAddBook: (boxNumber: number) => void;
 }
 
-export const BoxSetupCard = ({ box, onUpdate, onRemove }: BoxSetupCardProps) => {
-  const [isEditing, setIsEditing] = useState(!box.isConfigured);
+export const BoxSetupCard = ({ box, onUpdate, onRemove, onAddBook }: BoxSetupCardProps) => {
+  const [isEditing, setIsEditing] = useState(false);
   const [price, setPrice] = useState(box.ticketPrice.toString());
   const [totalTickets, setTotalTickets] = useState(box.totalTicketsPerBook.toString());
   const [startingNumber, setStartingNumber] = useState(box.startingTicketNumber.toString());
@@ -51,11 +52,12 @@ export const BoxSetupCard = ({ box, onUpdate, onRemove }: BoxSetupCardProps) => 
     setIsEditing(false);
   };
 
-  if (!isEditing && !box.isConfigured) {
+  // Unconfigured box - show "Add Book" option
+  if (!box.isConfigured) {
     return (
       <div 
         className="box-card opacity-60 cursor-pointer hover:opacity-100"
-        onClick={() => setIsEditing(true)}
+        onClick={() => onAddBook(box.boxNumber)}
       >
         <div className="flex items-center justify-between mb-3">
           <span className="text-lg font-bold text-foreground">Box {box.boxNumber}</span>
@@ -89,11 +91,15 @@ export const BoxSetupCard = ({ box, onUpdate, onRemove }: BoxSetupCardProps) => 
             </AlertDialog>
           </div>
         </div>
-        <p className="text-sm text-muted-foreground">Click to configure</p>
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Plus className="w-4 h-4" />
+          <span>Add Book</span>
+        </div>
       </div>
     );
   }
 
+  // Configured box - display mode
   if (!isEditing) {
     return (
       <div className="box-card">
@@ -107,6 +113,15 @@ export const BoxSetupCard = ({ box, onUpdate, onRemove }: BoxSetupCardProps) => 
               className="h-8 w-8 p-0"
             >
               <Edit2 className="w-4 h-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => onAddBook(box.boxNumber)}
+              className="h-8 w-8 p-0 text-primary hover:text-primary"
+              title="Add new book"
+            >
+              <BookOpen className="w-4 h-4" />
             </Button>
             <AlertDialog>
               <AlertDialogTrigger asChild>
@@ -135,6 +150,17 @@ export const BoxSetupCard = ({ box, onUpdate, onRemove }: BoxSetupCardProps) => 
             </AlertDialog>
           </div>
         </div>
+        
+        {/* Game/Book Info */}
+        {box.gameNumber && (
+          <div className="mb-2 px-2 py-1 bg-primary/10 rounded text-xs">
+            <span className="font-semibold text-primary">Game #{box.gameNumber}</span>
+            {box.bookNumber && (
+              <span className="text-muted-foreground ml-1">· Book #{box.bookNumber}</span>
+            )}
+          </div>
+        )}
+        
         <div className="space-y-1 text-sm">
           <div className="flex justify-between">
             <span className="text-muted-foreground">Price:</span>
@@ -145,14 +171,15 @@ export const BoxSetupCard = ({ box, onUpdate, onRemove }: BoxSetupCardProps) => 
             <span className="font-semibold">{box.totalTicketsPerBook}</span>
           </div>
           <div className="flex justify-between">
-            <span className="text-muted-foreground">Starting #:</span>
-            <span className="font-semibold">{box.startingTicketNumber}</span>
+            <span className="text-muted-foreground">Current #:</span>
+            <span className="font-semibold">{box.lastScannedTicketNumber ?? box.startingTicketNumber}</span>
           </div>
         </div>
       </div>
     );
   }
 
+  // Editing mode
   return (
     <div className="box-card-active p-4">
       <div className="flex items-center justify-between mb-4">
@@ -176,6 +203,17 @@ export const BoxSetupCard = ({ box, onUpdate, onRemove }: BoxSetupCardProps) => 
           </Button>
         </div>
       </div>
+      
+      {/* Show game/book info in edit mode */}
+      {box.gameNumber && (
+        <div className="mb-3 px-2 py-1 bg-primary/10 rounded text-xs">
+          <span className="font-semibold text-primary">Game #{box.gameNumber}</span>
+          {box.bookNumber && (
+            <span className="text-muted-foreground ml-1">· Book #{box.bookNumber}</span>
+          )}
+        </div>
+      )}
+      
       <div className="space-y-3">
         <div>
           <Label className="text-xs font-medium text-muted-foreground">Ticket Price ($)</Label>

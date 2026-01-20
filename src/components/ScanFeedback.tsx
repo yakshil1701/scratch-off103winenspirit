@@ -25,6 +25,7 @@ export const ScanFeedback = ({ result, error }: ScanFeedbackProps) => {
               {error.type === 'invalid_sequence' && 'Invalid Sequence'}
               {error.type === 'exceeds_book' && 'Exceeds Book Total'}
               {error.type === 'box_not_configured' && 'Box Not Configured'}
+              {error.type === 'unknown_game' && 'Unknown Game'}
             </h3>
             <p className="text-lg text-foreground">{error.message}</p>
           </div>
