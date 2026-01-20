@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { Layout } from '@/components/Layout';
 import { BoxSetupCard } from '@/components/BoxSetupCard';
+import { AddBookDialog } from '@/components/AddBookDialog';
 import { useTicketStore } from '@/hooks/useTicketStore';
-import { Package, Plus } from 'lucide-react';
+import { Package, Plus, BookOpen } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -15,9 +16,11 @@ import {
 import { Label } from '@/components/ui/label';
 
 const BoxSetup = () => {
-  const { boxes, updateBox, addBox, addBoxWithNumber, removeBox } = useTicketStore();
+  const { boxes, updateBox, addBox, addBoxWithNumber, addBookToBox, removeBox, gameRegistry } = useTicketStore();
   const configuredCount = boxes.filter(b => b.isConfigured).length;
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [isAddBookDialogOpen, setIsAddBookDialogOpen] = useState(false);
+  const [selectedBoxForBook, setSelectedBoxForBook] = useState<number | null>(null);
   const [newBoxNumber, setNewBoxNumber] = useState('');
 
   const handleAddBox = () => {
@@ -31,6 +34,25 @@ const BoxSetup = () => {
       setNewBoxNumber('');
       setIsAddDialogOpen(false);
     }
+  };
+
+  const handleAddBookToBox = (boxNumber: number) => {
+    setSelectedBoxForBook(boxNumber);
+    setIsAddBookDialogOpen(true);
+  };
+
+  const handleBookAdded = (
+    gameNumber: string,
+    bookNumber: string,
+    ticketPrice: number,
+    totalTickets: number,
+    startingTicketNumber: number
+  ) => {
+    if (selectedBoxForBook !== null) {
+      addBookToBox(selectedBoxForBook, gameNumber, bookNumber, ticketPrice, totalTickets, startingTicketNumber);
+    }
+    setIsAddBookDialogOpen(false);
+    setSelectedBoxForBook(null);
   };
 
   const existingNumbers = boxes.map(b => b.boxNumber);
@@ -105,6 +127,24 @@ const BoxSetup = () => {
           </div>
         </div>
 
+        {/* Game Registry Info */}
+        {gameRegistry.length > 0 && (
+          <div className="bg-muted/30 rounded-xl p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <BookOpen className="w-4 h-4 text-muted-foreground" />
+              <span className="text-sm font-medium text-muted-foreground">Known Games</span>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {gameRegistry.map(game => (
+                <div key={game.gameNumber} className="bg-background rounded-lg px-3 py-1.5 text-sm">
+                  <span className="font-semibold">#{game.gameNumber}</span>
+                  <span className="text-muted-foreground ml-2">${game.ticketPrice} • {game.totalTicketsPerBook} tickets</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Empty State */}
         {boxes.length === 0 && (
           <div className="bg-muted/50 border-2 border-dashed border-muted-foreground/20 rounded-xl p-12 text-center">
@@ -129,10 +169,20 @@ const BoxSetup = () => {
                 box={box}
                 onUpdate={updateBox}
                 onRemove={removeBox}
+                onAddBook={handleAddBookToBox}
               />
             ))}
           </div>
         )}
+
+        {/* Add Book Dialog */}
+        <AddBookDialog
+          open={isAddBookDialogOpen}
+          onOpenChange={setIsAddBookDialogOpen}
+          onAddBook={handleBookAdded}
+          gameRegistry={gameRegistry}
+          boxNumber={selectedBoxForBook ?? 0}
+        />
       </div>
     </Layout>
   );

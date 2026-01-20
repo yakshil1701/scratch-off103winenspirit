@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
-import { TicketBox, ScanResult, ScanError } from '@/types/ticket';
+import { TicketBox, ScanResult, ScanError, GameInfo } from '@/types/ticket';
 import { logErrorSecurely } from '@/lib/errorHandler';
 
 // Use localStorage for box configuration persistence across days
 const CONFIG_STORAGE_KEY = 'scratchoff-box-config';
 const DAILY_STORAGE_KEY = 'scratchoff-daily-data';
+const GAME_REGISTRY_KEY = 'scratchoff-game-registry';
 
 const getTodayDateString = () => {
   const now = new Date();
@@ -24,10 +25,24 @@ const createNewBox = (boxNumber: number): TicketBox => ({
   ticketsSold: 0,
   totalAmountSold: 0,
   isConfigured: false,
+  gameNumber: null,
+  bookNumber: null,
 });
 
 const createInitialBoxes = (): TicketBox[] => {
   // Start with no boxes - user will add as needed
+  return [];
+};
+
+const loadGameRegistry = (): GameInfo[] => {
+  try {
+    const stored = localStorage.getItem(GAME_REGISTRY_KEY);
+    if (stored) {
+      return JSON.parse(stored);
+    }
+  } catch {
+    logErrorSecurely('loadGameRegistry');
+  }
   return [];
 };
 
@@ -93,10 +108,20 @@ const loadBoxes = (): TicketBox[] => {
 
 export const useTicketStore = () => {
   const [boxes, setBoxes] = useState<TicketBox[]>(loadBoxes);
+  const [gameRegistry, setGameRegistry] = useState<GameInfo[]>(loadGameRegistry);
 
   const [scanHistory, setScanHistory] = useState<ScanResult[]>([]);
   const [lastScanResult, setLastScanResult] = useState<ScanResult | null>(null);
   const [lastError, setLastError] = useState<ScanError | null>(null);
+
+  // Persist game registry to localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem(GAME_REGISTRY_KEY, JSON.stringify(gameRegistry));
+    } catch {
+      logErrorSecurely('saveGameRegistry');
+    }
+  }, [gameRegistry]);
 
   // Persist box configuration to localStorage
   useEffect(() => {
@@ -119,6 +144,48 @@ export const useTicketStore = () => {
       logErrorSecurely('saveStoredData');
     }
   }, [boxes]);
+
+  // Register a game in the global registry
+  const registerGame = useCallback((gameNumber: string, ticketPrice: number, totalTicketsPerBook: number) => {
+    setGameRegistry(prev => {
+      const existing = prev.find(g => g.gameNumber === gameNumber);
+      if (existing) {
+        return prev; // Game already registered
+      }
+      return [...prev, { gameNumber, ticketPrice, totalTicketsPerBook }];
+    });
+  }, []);
+
+  // Add a book to a box (configures the box with game info)
+  const addBookToBox = useCallback((
+    boxNumber: number,
+    gameNumber: string,
+    bookNumber: string,
+    ticketPrice: number,
+    totalTicketsPerBook: number,
+    startingTicketNumber: number
+  ) => {
+    // First, ensure game is in registry
+    registerGame(gameNumber, ticketPrice, totalTicketsPerBook);
+    
+    // Update the box with book info
+    setBoxes(prev => prev.map(box => 
+      box.boxNumber === boxNumber 
+        ? {
+            ...box,
+            gameNumber,
+            bookNumber,
+            ticketPrice,
+            totalTicketsPerBook,
+            startingTicketNumber,
+            lastScannedTicketNumber: null,
+            ticketsSold: 0,
+            totalAmountSold: 0,
+            isConfigured: true,
+          }
+        : box
+    ));
+  }, [registerGame]);
 
   const updateBox = useCallback((boxNumber: number, updates: Partial<TicketBox>) => {
     setBoxes(prev => prev.map(box => 
@@ -154,38 +221,114 @@ export const useTicketStore = () => {
     setBoxes(prev => prev.filter(box => box.boxNumber !== boxNumber));
   }, []);
 
-  const extractTicketNumber = (barcode: string): number | null => {
+  // Extract game number, book number, and ticket number from barcode
+  const extractBarcodeInfo = (barcode: string): { gameNumber: string; bookNumber: string; ticketNumber: number } | null => {
     // Validate barcode is numeric and has sufficient length
     if (!/^\d{20}$/.test(barcode)) {
       return null;
     }
     
-    // Extract middle 3 digits (positions 10-12, 0-indexed: 9-11)
+    // Game number: first 3 digits
+    const gameNumber = barcode.substring(0, 3);
+    // Book number: digits 4-9 (6 digits)
+    const bookNumber = barcode.substring(3, 9);
+    // Ticket number: middle 3 digits (positions 10-12, 0-indexed: 9-11)
     const ticketStr = barcode.substring(9, 12);
-    return parseInt(ticketStr, 10);
+    const ticketNumber = parseInt(ticketStr, 10);
+    
+    return { gameNumber, bookNumber, ticketNumber };
+  };
+
+  const extractTicketNumber = (barcode: string): number | null => {
+    const info = extractBarcodeInfo(barcode);
+    return info ? info.ticketNumber : null;
   };
 
   const validateAndProcessTicket = useCallback((
     ticketNumber: number, 
     selectedBoxNumber: number,
-    isManualEntry: boolean = false
+    isManualEntry: boolean = false,
+    barcodeGameNumber?: string,
+    barcodeBookNumber?: string
   ): { result?: ScanResult; error?: ScanError } => {
     const box = boxes.find(b => b.boxNumber === selectedBoxNumber);
     
     if (!box || !box.isConfigured) {
       const error: ScanError = {
         type: 'box_not_configured',
-        message: `Box ${selectedBoxNumber} is not configured. Please set it up first.`
+        message: `Box ${selectedBoxNumber} is not configured. Please add a book first.`
       };
       setLastError(error);
       return { error };
     }
 
+    let updatedBox = { ...box };
+    let bookTransition = false;
+    let remainingTicketsSold = 0;
+    let remainingAmount = 0;
+
+    // Check if this is a new book for the same game in this box
+    if (barcodeGameNumber && barcodeBookNumber) {
+      if (box.gameNumber === barcodeGameNumber && box.bookNumber !== barcodeBookNumber) {
+        // Same game, different book - this is a book transition
+        bookTransition = true;
+        
+        // Calculate remaining tickets from previous book
+        const lastTicket = box.lastScannedTicketNumber ?? box.startingTicketNumber;
+        remainingTicketsSold = lastTicket; // All remaining tickets are sold
+        remainingAmount = remainingTicketsSold * box.ticketPrice;
+        
+        // Get game info from registry for the new book
+        const gameInfo = gameRegistry.find(g => g.gameNumber === barcodeGameNumber);
+        if (gameInfo) {
+          // Reset for new book
+          updatedBox = {
+            ...box,
+            bookNumber: barcodeBookNumber,
+            startingTicketNumber: gameInfo.totalTicketsPerBook,
+            lastScannedTicketNumber: null,
+            ticketsSold: box.ticketsSold + remainingTicketsSold,
+            totalAmountSold: box.totalAmountSold + remainingAmount,
+          };
+        }
+      } else if (box.gameNumber !== barcodeGameNumber) {
+        // Different game - need to check if it's in registry
+        const gameInfo = gameRegistry.find(g => g.gameNumber === barcodeGameNumber);
+        if (!gameInfo) {
+          const error: ScanError = {
+            type: 'unknown_game',
+            message: `Unknown game #${barcodeGameNumber}. Please add this game via Box Setup first.`
+          };
+          setLastError(error);
+          return { error };
+        }
+        
+        // Count remaining tickets from previous book as sold
+        const lastTicket = box.lastScannedTicketNumber ?? box.startingTicketNumber;
+        remainingTicketsSold = lastTicket;
+        remainingAmount = remainingTicketsSold * box.ticketPrice;
+        bookTransition = true;
+        
+        // Switch to new game/book
+        updatedBox = {
+          ...box,
+          gameNumber: barcodeGameNumber,
+          bookNumber: barcodeBookNumber,
+          ticketPrice: gameInfo.ticketPrice,
+          totalTicketsPerBook: gameInfo.totalTicketsPerBook,
+          startingTicketNumber: gameInfo.totalTicketsPerBook,
+          lastScannedTicketNumber: null,
+          ticketsSold: box.ticketsSold + remainingTicketsSold,
+          totalAmountSold: box.totalAmountSold + remainingAmount,
+        };
+      }
+    }
+
     // Get the reference number (either last scanned or starting number)
-    const referenceNumber = box.lastScannedTicketNumber ?? box.startingTicketNumber;
+    const referenceNumber = updatedBox.lastScannedTicketNumber ?? updatedBox.startingTicketNumber;
 
     // Check for duplicate scan
-    if (box.lastScannedTicketNumber !== null && ticketNumber === box.lastScannedTicketNumber) {
+    if (updatedBox.lastScannedTicketNumber !== null && ticketNumber === updatedBox.lastScannedTicketNumber) {
       const error: ScanError = {
         type: 'duplicate_scan',
         message: `Ticket #${ticketNumber} was already scanned.`
@@ -208,56 +351,68 @@ export const useTicketStore = () => {
     const ticketsSoldThisScan = referenceNumber - ticketNumber;
     
     // Validate doesn't exceed book total
-    const totalSoldAfterScan = box.ticketsSold + ticketsSoldThisScan;
-    if (totalSoldAfterScan > box.totalTicketsPerBook) {
+    const totalSoldAfterScan = updatedBox.ticketsSold + ticketsSoldThisScan;
+    if (totalSoldAfterScan > updatedBox.totalTicketsPerBook && !bookTransition) {
       const error: ScanError = {
         type: 'exceeds_book',
-        message: `Warning: This would exceed book total (${totalSoldAfterScan} > ${box.totalTicketsPerBook})`
+        message: `Warning: This would exceed book total (${totalSoldAfterScan} > ${updatedBox.totalTicketsPerBook})`
       };
       setLastError(error);
       return { error };
     }
 
     // Calculate amount
-    const amountSold = ticketsSoldThisScan * box.ticketPrice;
+    const amountSold = ticketsSoldThisScan * updatedBox.ticketPrice;
 
     // Update box
     setBoxes(prev => prev.map(b => 
       b.boxNumber === selectedBoxNumber
         ? {
-            ...b,
+            ...updatedBox,
             lastScannedTicketNumber: ticketNumber,
-            ticketsSold: b.ticketsSold + ticketsSoldThisScan,
-            totalAmountSold: b.totalAmountSold + amountSold,
+            ticketsSold: updatedBox.ticketsSold + ticketsSoldThisScan,
+            totalAmountSold: updatedBox.totalAmountSold + amountSold,
           }
         : b
     ));
+
+    const totalTicketsSold = ticketsSoldThisScan + remainingTicketsSold;
+    const totalAmount = amountSold + remainingAmount;
+
+    let message = isManualEntry 
+      ? `Manual entry: Sold ${ticketsSoldThisScan} tickets for $${amountSold.toFixed(2)}`
+      : `Sold ${ticketsSoldThisScan} tickets for $${amountSold.toFixed(2)}`;
+    
+    if (bookTransition) {
+      message = `New book started! Previous book: ${remainingTicketsSold} tickets ($${remainingAmount.toFixed(2)}). This scan: ${ticketsSoldThisScan} tickets ($${amountSold.toFixed(2)})`;
+    }
 
     const result: ScanResult = {
       success: true,
       boxNumber: selectedBoxNumber,
       ticketNumber,
-      ticketsSold: ticketsSoldThisScan,
-      amountSold,
-      message: isManualEntry 
-        ? `Manual entry: Sold ${ticketsSoldThisScan} tickets for $${amountSold.toFixed(2)}`
-        : `Sold ${ticketsSoldThisScan} tickets for $${amountSold.toFixed(2)}`,
+      ticketsSold: totalTicketsSold,
+      amountSold: totalAmount,
+      message,
       timestamp: new Date(),
+      gameNumber: barcodeGameNumber || box.gameNumber || undefined,
+      bookNumber: barcodeBookNumber || box.bookNumber || undefined,
+      bookTransition,
     };
 
     setLastScanResult(result);
     setScanHistory(prev => [result, ...prev].slice(0, 50)); // Keep last 50 scans
 
     return { result };
-  }, [boxes]);
+  }, [boxes, gameRegistry]);
 
   const processBarcode = useCallback((barcode: string, selectedBoxNumber: number): { result?: ScanResult; error?: ScanError } => {
     setLastError(null);
     setLastScanResult(null);
 
-    const ticketNumber = extractTicketNumber(barcode);
+    const barcodeInfo = extractBarcodeInfo(barcode);
     
-    if (ticketNumber === null) {
+    if (barcodeInfo === null) {
       const error: ScanError = {
         type: 'invalid_barcode',
         message: 'Invalid barcode format. Expected 20 digits.'
@@ -266,7 +421,13 @@ export const useTicketStore = () => {
       return { error };
     }
 
-    return validateAndProcessTicket(ticketNumber, selectedBoxNumber, false);
+    return validateAndProcessTicket(
+      barcodeInfo.ticketNumber, 
+      selectedBoxNumber, 
+      false,
+      barcodeInfo.gameNumber,
+      barcodeInfo.bookNumber
+    );
   }, [validateAndProcessTicket]);
 
   const processManualEntry = useCallback((ticketNumber: number, selectedBoxNumber: number): { result?: ScanResult; error?: ScanError } => {
@@ -325,9 +486,12 @@ export const useTicketStore = () => {
 
   return {
     boxes,
+    gameRegistry,
     updateBox,
     addBox,
     addBoxWithNumber,
+    addBookToBox,
+    registerGame,
     removeBox,
     processBarcode,
     processManualEntry,
