@@ -5,39 +5,24 @@ import { AddBookDialog } from '@/components/AddBookDialog';
 import { useTicketStore } from '@/hooks/useTicketStore';
 import { Package, Plus, BookOpen } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from '@/components/ui/dialog';
-import { Label } from '@/components/ui/label';
 
 const BoxSetup = () => {
   const { boxes, updateBox, addBox, addBoxWithNumber, addBookToBox, removeBox, gameRegistry } = useTicketStore();
   const configuredCount = boxes.filter(b => b.isConfigured).length;
-  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isAddBookDialogOpen, setIsAddBookDialogOpen] = useState(false);
   const [selectedBoxForBook, setSelectedBoxForBook] = useState<number | null>(null);
-  const [newBoxNumber, setNewBoxNumber] = useState('');
 
   const handleAddBox = () => {
     addBox();
   };
 
-  const handleAddBoxWithNumber = () => {
-    const num = parseInt(newBoxNumber);
-    if (num > 0 && !boxes.some(b => b.boxNumber === num)) {
-      addBoxWithNumber(num);
-      setNewBoxNumber('');
-      setIsAddDialogOpen(false);
-    }
-  };
-
   const handleAddBookToBox = (boxNumber: number) => {
     setSelectedBoxForBook(boxNumber);
+    setIsAddBookDialogOpen(true);
+  };
+
+  const handleOpenAddBookDialog = () => {
+    setSelectedBoxForBook(null); // No pre-selected box
     setIsAddBookDialogOpen(true);
   };
 
@@ -46,17 +31,20 @@ const BoxSetup = () => {
     bookNumber: string,
     ticketPrice: number,
     totalTickets: number,
-    startingTicketNumber: number
+    startingTicketNumber: number,
+    targetBoxNumber: number
   ) => {
-    if (selectedBoxForBook !== null) {
-      addBookToBox(selectedBoxForBook, gameNumber, bookNumber, ticketPrice, totalTickets, startingTicketNumber);
+    // Ensure the box exists, create if needed
+    if (!boxes.some(b => b.boxNumber === targetBoxNumber)) {
+      addBoxWithNumber(targetBoxNumber);
     }
+    // Use setTimeout to ensure box is created before adding book
+    setTimeout(() => {
+      addBookToBox(targetBoxNumber, gameNumber, bookNumber, ticketPrice, totalTickets, startingTicketNumber);
+    }, 0);
     setIsAddBookDialogOpen(false);
     setSelectedBoxForBook(null);
   };
-
-  const existingNumbers = boxes.map(b => b.boxNumber);
-  const isValidNewNumber = newBoxNumber && parseInt(newBoxNumber) > 0 && !existingNumbers.includes(parseInt(newBoxNumber));
 
   return (
     <Layout>
@@ -79,50 +67,14 @@ const BoxSetup = () => {
               </div>
             </div>
             <div className="flex gap-2">
-              <Button onClick={handleAddBox} className="gap-2">
+              <Button onClick={handleAddBox} variant="outline" className="gap-2">
                 <Plus className="w-4 h-4" />
-                Add Box
+                Add Empty Box
               </Button>
-              <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
-                <DialogTrigger asChild>
-                  <Button variant="outline" className="gap-2">
-                    <Plus className="w-4 h-4" />
-                    Add Specific #
-                  </Button>
-                </DialogTrigger>
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>Add Box with Specific Number</DialogTitle>
-                  </DialogHeader>
-                  <div className="space-y-4 pt-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="boxNumber">Box Number</Label>
-                      <Input
-                        id="boxNumber"
-                        type="number"
-                        min="1"
-                        value={newBoxNumber}
-                        onChange={(e) => setNewBoxNumber(e.target.value)}
-                        placeholder="Enter box number"
-                      />
-                      {newBoxNumber && !isValidNewNumber && (
-                        <p className="text-sm text-destructive">
-                          {parseInt(newBoxNumber) <= 0 
-                            ? 'Box number must be greater than 0'
-                            : 'This box number already exists'}
-                        </p>
-                      )}
-                    </div>
-                    <Button 
-                      onClick={handleAddBoxWithNumber} 
-                      disabled={!isValidNewNumber}
-                      className="w-full"
-                    >
-                      Add Box #{newBoxNumber}
-                    </Button>
-                  </div>
-                </DialogContent>
-              </Dialog>
+              <Button onClick={handleOpenAddBookDialog} className="gap-2">
+                <BookOpen className="w-4 h-4" />
+                Add Book
+              </Button>
             </div>
           </div>
         </div>
@@ -181,7 +133,8 @@ const BoxSetup = () => {
           onOpenChange={setIsAddBookDialogOpen}
           onAddBook={handleBookAdded}
           gameRegistry={gameRegistry}
-          boxNumber={selectedBoxForBook ?? 0}
+          existingBoxes={boxes}
+          preselectedBoxNumber={selectedBoxForBook}
         />
       </div>
     </Layout>

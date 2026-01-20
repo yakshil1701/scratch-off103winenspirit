@@ -11,15 +11,24 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { BookOpen, ScanLine } from 'lucide-react';
-import { GameInfo } from '@/types/ticket';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { BookOpen, ScanLine, Package, Plus } from 'lucide-react';
+import { GameInfo, TicketBox } from '@/types/ticket';
 
 interface AddBookDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onAddBook: (gameNumber: string, bookNumber: string, ticketPrice: number, totalTickets: number, startingTicketNumber: number) => void;
+  onAddBook: (gameNumber: string, bookNumber: string, ticketPrice: number, totalTickets: number, startingTicketNumber: number, targetBoxNumber: number) => void;
   gameRegistry: GameInfo[];
-  boxNumber: number;
+  existingBoxes: TicketBox[];
+  preselectedBoxNumber: number | null;
 }
 
 export const AddBookDialog = ({
@@ -27,7 +36,8 @@ export const AddBookDialog = ({
   onOpenChange,
   onAddBook,
   gameRegistry,
-  boxNumber,
+  existingBoxes,
+  preselectedBoxNumber,
 }: AddBookDialogProps) => {
   const [activeTab, setActiveTab] = useState<'scan' | 'manual'>('scan');
   const [barcodeInput, setBarcodeInput] = useState('');
@@ -38,6 +48,11 @@ export const AddBookDialog = ({
   const [startingTicket, setStartingTicket] = useState('');
   const [isKnownGame, setIsKnownGame] = useState(false);
   
+  // Box assignment state
+  const [boxAssignment, setBoxAssignment] = useState<'existing' | 'new'>('existing');
+  const [selectedExistingBox, setSelectedExistingBox] = useState<string>('');
+  const [newBoxNumber, setNewBoxNumber] = useState('');
+  
   const scanInputRef = useRef<HTMLInputElement>(null);
 
   // Focus scan input when dialog opens
@@ -47,6 +62,26 @@ export const AddBookDialog = ({
     }
   }, [open, activeTab]);
 
+  // Set preselected box when dialog opens
+  useEffect(() => {
+    if (open && preselectedBoxNumber !== null) {
+      setBoxAssignment('existing');
+      setSelectedExistingBox(preselectedBoxNumber.toString());
+    } else if (open && existingBoxes.length > 0) {
+      setBoxAssignment('existing');
+      setSelectedExistingBox(existingBoxes[0].boxNumber.toString());
+    } else if (open) {
+      setBoxAssignment('new');
+      // Find next available box number
+      const existingNumbers = existingBoxes.map(b => b.boxNumber);
+      let nextNumber = 1;
+      while (existingNumbers.includes(nextNumber)) {
+        nextNumber++;
+      }
+      setNewBoxNumber(nextNumber.toString());
+    }
+  }, [open, preselectedBoxNumber, existingBoxes]);
+
   const resetForm = () => {
     setBarcodeInput('');
     setGameNumber('');
@@ -55,6 +90,9 @@ export const AddBookDialog = ({
     setTotalTickets('');
     setStartingTicket('');
     setIsKnownGame(false);
+    setBoxAssignment('existing');
+    setSelectedExistingBox('');
+    setNewBoxNumber('');
   };
 
   const handleClose = () => {
@@ -122,26 +160,48 @@ export const AddBookDialog = ({
     const tickets = parseInt(totalTickets);
     const startNum = parseInt(startingTicket);
     
-    if (gameNumber && bookNumber && price > 0 && tickets > 0 && startNum >= 0) {
-      onAddBook(gameNumber, bookNumber, price, tickets, startNum);
+    // Determine target box number
+    let targetBox: number;
+    if (boxAssignment === 'existing') {
+      targetBox = parseInt(selectedExistingBox);
+    } else {
+      targetBox = parseInt(newBoxNumber);
+    }
+    
+    if (gameNumber && bookNumber && price > 0 && tickets > 0 && startNum >= 0 && targetBox > 0) {
+      onAddBook(gameNumber, bookNumber, price, tickets, startNum, targetBox);
       handleClose();
     }
   };
+
+  // Validate new box number doesn't already exist
+  const existingBoxNumbers = existingBoxes.map(b => b.boxNumber);
+  const isValidNewBoxNumber = newBoxNumber && parseInt(newBoxNumber) > 0 && !existingBoxNumbers.includes(parseInt(newBoxNumber));
+
+  const isValidBoxSelection = 
+    (boxAssignment === 'existing' && selectedExistingBox) ||
+    (boxAssignment === 'new' && isValidNewBoxNumber);
 
   const isValid = 
     gameNumber.length >= 1 && 
     bookNumber.length >= 1 && 
     parseFloat(ticketPrice) > 0 && 
     parseInt(totalTickets) > 0 &&
-    parseInt(startingTicket) >= 0;
+    parseInt(startingTicket) >= 0 &&
+    isValidBoxSelection;
+
+  // Determine dialog title based on context
+  const dialogTitle = preselectedBoxNumber !== null 
+    ? `Add New Book to Box ${preselectedBoxNumber}`
+    : 'Add New Book';
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <BookOpen className="w-5 h-5" />
-            Add New Book to Box {boxNumber}
+            {dialogTitle}
           </DialogTitle>
           <DialogDescription>
             Scan a ticket barcode or manually enter book details.
@@ -245,6 +305,82 @@ export const AddBookDialog = ({
                 The ticket number you'll scan first (usually the highest number in the book).
               </p>
             </div>
+
+            {/* Box Assignment Section - only show if no preselected box */}
+            {preselectedBoxNumber === null && (
+              <div className="space-y-3 pt-2 border-t">
+                <Label className="text-base font-semibold">Assign to Box</Label>
+                <RadioGroup 
+                  value={boxAssignment} 
+                  onValueChange={(v) => setBoxAssignment(v as 'existing' | 'new')}
+                  className="space-y-2"
+                >
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="existing" id="existing" disabled={existingBoxes.length === 0} />
+                    <Label htmlFor="existing" className="flex items-center gap-2 cursor-pointer">
+                      <Package className="w-4 h-4" />
+                      Use existing box
+                    </Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="new" id="new" />
+                    <Label htmlFor="new" className="flex items-center gap-2 cursor-pointer">
+                      <Plus className="w-4 h-4" />
+                      Create new box
+                    </Label>
+                  </div>
+                </RadioGroup>
+
+                {boxAssignment === 'existing' && existingBoxes.length > 0 && (
+                  <div className="space-y-2 pl-6">
+                    <Label>Select Box</Label>
+                    <Select value={selectedExistingBox} onValueChange={setSelectedExistingBox}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select a box" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {existingBoxes.map(box => (
+                          <SelectItem key={box.boxNumber} value={box.boxNumber.toString()}>
+                            Box {box.boxNumber}
+                            {box.isConfigured && box.gameNumber && (
+                              <span className="text-muted-foreground ml-2">
+                                (Game #{box.gameNumber})
+                              </span>
+                            )}
+                            {!box.isConfigured && (
+                              <span className="text-muted-foreground ml-2">(Empty)</span>
+                            )}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      Adding a book to an existing box will replace its current configuration.
+                    </p>
+                  </div>
+                )}
+
+                {boxAssignment === 'new' && (
+                  <div className="space-y-2 pl-6">
+                    <Label>New Box Number</Label>
+                    <Input
+                      type="number"
+                      value={newBoxNumber}
+                      onChange={(e) => setNewBoxNumber(e.target.value.replace(/\D/g, ''))}
+                      placeholder="Enter box number"
+                      min="1"
+                    />
+                    {newBoxNumber && !isValidNewBoxNumber && (
+                      <p className="text-sm text-destructive">
+                        {parseInt(newBoxNumber) <= 0 
+                          ? 'Box number must be greater than 0'
+                          : 'This box number already exists'}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
           </TabsContent>
         </Tabs>
 
