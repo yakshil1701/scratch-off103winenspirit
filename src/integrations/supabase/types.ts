@@ -26,6 +26,7 @@ export type Database = {
           tickets_sold: number
           total_amount_sold: number
           updated_at: string
+          user_id: string | null
         }
         Insert: {
           box_number: number
@@ -38,6 +39,7 @@ export type Database = {
           tickets_sold?: number
           total_amount_sold?: number
           updated_at?: string
+          user_id?: string | null
         }
         Update: {
           box_number?: number
@@ -50,6 +52,7 @@ export type Database = {
           tickets_sold?: number
           total_amount_sold?: number
           updated_at?: string
+          user_id?: string | null
         }
         Relationships: [
           {
@@ -72,6 +75,7 @@ export type Database = {
           total_amount_sold: number
           total_tickets_sold: number
           updated_at: string
+          user_id: string | null
         }
         Insert: {
           active_boxes?: number
@@ -83,6 +87,7 @@ export type Database = {
           total_amount_sold?: number
           total_tickets_sold?: number
           updated_at?: string
+          user_id?: string | null
         }
         Update: {
           active_boxes?: number
@@ -94,6 +99,7 @@ export type Database = {
           total_amount_sold?: number
           total_tickets_sold?: number
           updated_at?: string
+          user_id?: string | null
         }
         Relationships: []
       }
