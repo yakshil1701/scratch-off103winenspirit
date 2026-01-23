@@ -2,12 +2,15 @@ import { useState } from 'react';
 import { Layout } from '@/components/Layout';
 import { BoxSetupCard } from '@/components/BoxSetupCard';
 import { AddBookDialog } from '@/components/AddBookDialog';
+import { StoreSettingsCard } from '@/components/StoreSettingsCard';
 import { useTicketStore } from '@/hooks/useTicketStore';
+import { useStoreSettings } from '@/hooks/useStoreSettings';
 import { Package, Plus, BookOpen } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 const BoxSetup = () => {
   const { boxes, updateBox, addBox, addBoxWithNumber, addBookToBox, removeBox, gameRegistry } = useTicketStore();
+  const { settings, updateStateCode, updateTicketOrder } = useStoreSettings();
   const configuredCount = boxes.filter(b => b.isConfigured).length;
   const [isAddBookDialogOpen, setIsAddBookDialogOpen] = useState(false);
   const [selectedBoxForBook, setSelectedBoxForBook] = useState<number | null>(null);
@@ -46,9 +49,19 @@ const BoxSetup = () => {
     setSelectedBoxForBook(null);
   };
 
+  // Check if settings can be changed (only when no sales data)
+  const hasAnySales = boxes.some(b => b.ticketsSold > 0);
+
   return (
     <Layout>
       <div className="space-y-6 animate-fade-in">
+        {/* Store Settings */}
+        <StoreSettingsCard
+          settings={settings}
+          onStateChange={updateStateCode}
+          onTicketOrderChange={updateTicketOrder}
+          disabled={hasAnySales}
+        />
         {/* Header */}
         <div className="flex items-center justify-between flex-wrap gap-4">
           <div>
@@ -135,6 +148,7 @@ const BoxSetup = () => {
           gameRegistry={gameRegistry}
           existingBoxes={boxes}
           preselectedBoxNumber={selectedBoxForBook}
+          stateCode={settings.stateCode}
         />
       </div>
     </Layout>

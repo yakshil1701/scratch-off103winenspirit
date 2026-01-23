@@ -21,6 +21,7 @@ import {
 } from '@/components/ui/select';
 import { BookOpen, ScanLine, Package, Plus } from 'lucide-react';
 import { GameInfo, TicketBox } from '@/types/ticket';
+import { StateCode } from '@/types/settings';
 
 interface AddBookDialogProps {
   open: boolean;
@@ -29,6 +30,7 @@ interface AddBookDialogProps {
   gameRegistry: GameInfo[];
   existingBoxes: TicketBox[];
   preselectedBoxNumber: number | null;
+  stateCode: StateCode;
 }
 
 export const AddBookDialog = ({
@@ -38,6 +40,7 @@ export const AddBookDialog = ({
   gameRegistry,
   existingBoxes,
   preselectedBoxNumber,
+  stateCode,
 }: AddBookDialogProps) => {
   const [activeTab, setActiveTab] = useState<'scan' | 'manual'>('scan');
   const [barcodeInput, setBarcodeInput] = useState('');
@@ -100,8 +103,20 @@ export const AddBookDialog = ({
     onOpenChange(false);
   };
 
-  // Extract game number (first 3 digits) and book number (next 6 digits) from barcode
+  // Extract game number and book number from barcode based on state
   const extractFromBarcode = (barcode: string) => {
+    if (stateCode === 'DC') {
+      // Washington DC format: 1619-04147-7-017 (with dashes)
+      const segments = barcode.split('-');
+      if (segments.length >= 3) {
+        const game = segments[0];
+        const book = segments[1];
+        return { gameNumber: game, bookNumber: book };
+      }
+      return null;
+    }
+    
+    // Maryland format: 20-digit numeric barcode
     if (!/^\d{20}$/.test(barcode)) {
       return null;
     }
@@ -136,8 +151,10 @@ export const AddBookDialog = ({
   };
 
   const handleBarcodeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    // Only allow numeric input
-    const value = e.target.value.replace(/\D/g, '');
+    // Allow numeric input and dashes for DC format
+    const value = stateCode === 'DC' 
+      ? e.target.value.replace(/[^0-9-]/g, '')
+      : e.target.value.replace(/\D/g, '');
     setBarcodeInput(value);
   };
 
@@ -228,12 +245,15 @@ export const AddBookDialog = ({
                 value={barcodeInput}
                 onChange={handleBarcodeChange}
                 onKeyDown={handleBarcodeKeyDown}
-                placeholder="Scan ticket barcode..."
+                placeholder={stateCode === 'DC' ? "e.g., 1619-04147-7-017" : "Scan ticket barcode..."}
                 className="font-mono text-lg"
                 autoFocus
               />
               <p className="text-sm text-muted-foreground">
-                Scan any ticket from the book. Game and book numbers will be extracted automatically.
+                {stateCode === 'DC' 
+                  ? 'Enter barcode in format: 1619-04147-7-017 (Game-Book-X-Ticket)'
+                  : 'Scan any ticket from the book. Game and book numbers will be extracted automatically.'
+                }
               </p>
             </div>
           </TabsContent>

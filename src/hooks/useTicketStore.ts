@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { TicketBox, ScanResult, ScanError, GameInfo } from '@/types/ticket';
+import { StateCode, TicketOrder } from '@/types/settings';
 import { logErrorSecurely } from '@/lib/errorHandler';
 
 // Use localStorage for box configuration persistence across days
@@ -221,9 +222,32 @@ export const useTicketStore = () => {
     setBoxes(prev => prev.filter(box => box.boxNumber !== boxNumber));
   }, []);
 
-  // Extract game number, book number, and ticket number from barcode
-  const extractBarcodeInfo = (barcode: string): { gameNumber: string; bookNumber: string; ticketNumber: number } | null => {
-    // Validate barcode is numeric and has sufficient length
+  // Extract game number, book number, and ticket number from barcode based on state
+  const extractBarcodeInfo = useCallback((barcode: string, stateCode: StateCode): { gameNumber: string; bookNumber: string; ticketNumber: number } | null => {
+    if (stateCode === 'DC') {
+      // Washington DC format: 1619-04147-7-017 (with dashes)
+      // Remove dashes and validate
+      const cleanBarcode = barcode.replace(/-/g, '');
+      
+      // Split by dash to get segments
+      const segments = barcode.split('-');
+      if (segments.length >= 3) {
+        // Game number: first segment (e.g., "1619")
+        const gameNumber = segments[0];
+        // Book number: second segment (e.g., "04147")
+        const bookNumber = segments[1];
+        // Ticket number: last segment (e.g., "017")
+        const ticketStr = segments[segments.length - 1];
+        const ticketNumber = parseInt(ticketStr, 10);
+        
+        if (!isNaN(ticketNumber) && gameNumber && bookNumber) {
+          return { gameNumber, bookNumber, ticketNumber };
+        }
+      }
+      return null;
+    }
+    
+    // Maryland format: 20-digit numeric barcode
     if (!/^\d{20}$/.test(barcode)) {
       return null;
     }
@@ -237,16 +261,17 @@ export const useTicketStore = () => {
     const ticketNumber = parseInt(ticketStr, 10);
     
     return { gameNumber, bookNumber, ticketNumber };
-  };
+  }, []);
 
-  const extractTicketNumber = (barcode: string): number | null => {
-    const info = extractBarcodeInfo(barcode);
+  const extractTicketNumber = useCallback((barcode: string, stateCode: StateCode): number | null => {
+    const info = extractBarcodeInfo(barcode, stateCode);
     return info ? info.ticketNumber : null;
-  };
+  }, [extractBarcodeInfo]);
 
   const validateAndProcessTicket = useCallback((
     ticketNumber: number, 
     selectedBoxNumber: number,
+    ticketOrder: TicketOrder,
     isManualEntry: boolean = false,
     barcodeGameNumber?: string,
     barcodeBookNumber?: string
@@ -337,18 +362,35 @@ export const useTicketStore = () => {
       return { error };
     }
 
-    // Validate ticket sequence (numbers should decrease)
-    if (ticketNumber > referenceNumber) {
-      const error: ScanError = {
-        type: 'invalid_sequence',
-        message: `Invalid sequence: Ticket #${ticketNumber} is higher than last ticket #${referenceNumber}. Tickets should decrease.`
-      };
-      setLastError(error);
-      return { error };
+    // Validate ticket sequence based on ticket order
+    const isDescending = ticketOrder === 'descending';
+    
+    if (isDescending) {
+      // Descending: ticket numbers decrease (60, 59, 58...)
+      if (ticketNumber > referenceNumber) {
+        const error: ScanError = {
+          type: 'invalid_sequence',
+          message: `Invalid sequence: Ticket #${ticketNumber} is higher than last ticket #${referenceNumber}. Tickets should decrease.`
+        };
+        setLastError(error);
+        return { error };
+      }
+    } else {
+      // Ascending: ticket numbers increase (1, 2, 3...)
+      if (ticketNumber < referenceNumber) {
+        const error: ScanError = {
+          type: 'invalid_sequence',
+          message: `Invalid sequence: Ticket #${ticketNumber} is lower than last ticket #${referenceNumber}. Tickets should increase.`
+        };
+        setLastError(error);
+        return { error };
+      }
     }
 
-    // Calculate tickets sold in this scan
-    const ticketsSoldThisScan = referenceNumber - ticketNumber;
+    // Calculate tickets sold in this scan based on order
+    const ticketsSoldThisScan = isDescending 
+      ? referenceNumber - ticketNumber 
+      : ticketNumber - referenceNumber;
     
     // Validate doesn't exceed book total
     const totalSoldAfterScan = updatedBox.ticketsSold + ticketsSoldThisScan;
@@ -406,16 +448,24 @@ export const useTicketStore = () => {
     return { result };
   }, [boxes, gameRegistry]);
 
-  const processBarcode = useCallback((barcode: string, selectedBoxNumber: number): { result?: ScanResult; error?: ScanError } => {
+  const processBarcode = useCallback((
+    barcode: string, 
+    selectedBoxNumber: number,
+    stateCode: StateCode,
+    ticketOrder: TicketOrder
+  ): { result?: ScanResult; error?: ScanError } => {
     setLastError(null);
     setLastScanResult(null);
 
-    const barcodeInfo = extractBarcodeInfo(barcode);
+    const barcodeInfo = extractBarcodeInfo(barcode, stateCode);
     
     if (barcodeInfo === null) {
+      const errorMessage = stateCode === 'DC' 
+        ? 'Invalid barcode format. Expected format: 1619-04147-7-017'
+        : 'Invalid barcode format. Expected 20 digits.';
       const error: ScanError = {
         type: 'invalid_barcode',
-        message: 'Invalid barcode format. Expected 20 digits.'
+        message: errorMessage
       };
       setLastError(error);
       return { error };
@@ -424,13 +474,18 @@ export const useTicketStore = () => {
     return validateAndProcessTicket(
       barcodeInfo.ticketNumber, 
       selectedBoxNumber, 
+      ticketOrder,
       false,
       barcodeInfo.gameNumber,
       barcodeInfo.bookNumber
     );
-  }, [validateAndProcessTicket]);
+  }, [extractBarcodeInfo, validateAndProcessTicket]);
 
-  const processManualEntry = useCallback((ticketNumber: number, selectedBoxNumber: number): { result?: ScanResult; error?: ScanError } => {
+  const processManualEntry = useCallback((
+    ticketNumber: number, 
+    selectedBoxNumber: number,
+    ticketOrder: TicketOrder
+  ): { result?: ScanResult; error?: ScanError } => {
     setLastError(null);
     setLastScanResult(null);
 
@@ -444,7 +499,7 @@ export const useTicketStore = () => {
       return { error };
     }
 
-    return validateAndProcessTicket(ticketNumber, selectedBoxNumber, true);
+    return validateAndProcessTicket(ticketNumber, selectedBoxNumber, ticketOrder, true);
   }, [validateAndProcessTicket]);
 
   const resetDailyCounts = useCallback(() => {
