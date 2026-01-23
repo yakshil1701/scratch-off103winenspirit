@@ -4,7 +4,9 @@ import { ScanInput } from '@/components/ScanInput';
 import { BoxSelector } from '@/components/BoxSelector';
 import { ScanFeedback } from '@/components/ScanFeedback';
 import { ScanHistory } from '@/components/ScanHistory';
+import { StoreSettingsCard } from '@/components/StoreSettingsCard';
 import { useTicketStore } from '@/hooks/useTicketStore';
+import { useStoreSettings } from '@/hooks/useStoreSettings';
 import { DollarSign, Ticket, Edit3 } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
@@ -21,6 +23,7 @@ import {
 
 const ScanTickets = () => {
   const { boxes, processBarcode, processManualEntry, scanHistory, lastScanResult, lastError, getTotals } = useTicketStore();
+  const { settings, updateStateCode, updateTicketOrder } = useStoreSettings();
   const [selectedBox, setSelectedBox] = useState<number | null>(null);
   const [autoAdvance, setAutoAdvance] = useState(false);
   const [manualEntryOpen, setManualEntryOpen] = useState(false);
@@ -41,7 +44,7 @@ const ScanTickets = () => {
     if (selectedBox === null) {
       return;
     }
-    const { result } = processBarcode(barcode, selectedBox);
+    const { result } = processBarcode(barcode, selectedBox, settings.stateCode, settings.ticketOrder);
     
     // Auto-advance only on successful scan
     if (autoAdvance && result?.success) {
@@ -58,7 +61,7 @@ const ScanTickets = () => {
     const ticketNum = parseInt(manualTicketNumber, 10);
     if (isNaN(ticketNum)) return;
     
-    const { result } = processManualEntry(ticketNum, selectedBox);
+    const { result } = processManualEntry(ticketNum, selectedBox, settings.ticketOrder);
     
     // Auto-advance only on successful entry
     if (autoAdvance && result?.success) {
@@ -74,9 +77,20 @@ const ScanTickets = () => {
 
   const selectedBoxData = boxes.find(b => b.boxNumber === selectedBox);
 
+  // Check if settings can be changed (only when no sales data)
+  const hasAnySales = boxes.some(b => b.ticketsSold > 0);
+
   return (
     <Layout>
       <div className="space-y-6 animate-fade-in">
+        {/* Store Settings */}
+        <StoreSettingsCard
+          settings={settings}
+          onStateChange={updateStateCode}
+          onTicketOrderChange={updateTicketOrder}
+          disabled={hasAnySales}
+        />
+
         {/* Stats Bar */}
         <div className="grid grid-cols-2 gap-4">
           <div className="stat-card flex items-center gap-4">
@@ -163,6 +177,7 @@ const ScanTickets = () => {
           <ScanInput
             onScan={handleScan}
             disabled={selectedBox === null}
+            stateCode={settings.stateCode}
           />
           {selectedBox === null && (
             <p className="text-sm text-warning mt-2">

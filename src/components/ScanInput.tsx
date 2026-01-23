@@ -1,12 +1,14 @@
 import { useRef, useEffect, useState, KeyboardEvent, ChangeEvent } from 'react';
 import { ScanBarcode } from 'lucide-react';
+import { StateCode } from '@/types/settings';
 
 interface ScanInputProps {
   onScan: (barcode: string) => void;
   disabled?: boolean;
+  stateCode?: StateCode;
 }
 
-export const ScanInput = ({ onScan, disabled = false }: ScanInputProps) => {
+export const ScanInput = ({ onScan, disabled = false, stateCode = 'MD' }: ScanInputProps) => {
   const inputRef = useRef<HTMLInputElement>(null);
   const [value, setValue] = useState('');
 
@@ -45,10 +47,16 @@ export const ScanInput = ({ onScan, disabled = false }: ScanInputProps) => {
   };
 
   const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
-    // Only allow numeric input
-    const numericValue = e.target.value.replace(/\D/g, '');
-    setValue(numericValue);
+    // Allow numeric input and dashes for DC format
+    const cleanedValue = stateCode === 'DC'
+      ? e.target.value.replace(/[^0-9-]/g, '')
+      : e.target.value.replace(/\D/g, '');
+    setValue(cleanedValue);
   };
+
+  const placeholder = stateCode === 'DC'
+    ? 'Scan barcode (e.g., 1619-04147-7-017)...'
+    : 'Scan scratch-off ticket barcode...';
 
   return (
     <div className="relative">
@@ -63,7 +71,7 @@ export const ScanInput = ({ onScan, disabled = false }: ScanInputProps) => {
         onKeyDown={handleKeyDown}
         disabled={disabled}
         className="scan-input w-full pl-16 pr-4 bg-card text-foreground placeholder:text-muted-foreground disabled:opacity-50 disabled:cursor-not-allowed"
-        placeholder="Scan scratch-off ticket barcode..."
+        placeholder={placeholder}
         autoComplete="off"
         autoCorrect="off"
         autoCapitalize="off"
