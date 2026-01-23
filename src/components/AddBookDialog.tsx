@@ -106,13 +106,25 @@ export const AddBookDialog = ({
   // Extract game number and book number from barcode based on state
   const extractFromBarcode = (barcode: string) => {
     if (stateCode === 'DC') {
-      // Washington DC format: 1619-04147-7-017 (with dashes)
-      const segments = barcode.split('-');
-      if (segments.length >= 3) {
-        const game = segments[0];
-        const book = segments[1];
+      // Washington DC dashed format: 1619-04147-7-017
+      if (barcode.includes('-')) {
+        const segments = barcode.split('-');
+        if (segments.length >= 3) {
+          const game = segments[0];
+          const book = segments[1];
+          return { gameNumber: game, bookNumber: book };
+        }
+        return null;
+      }
+      
+      // Long numeric DC format: 1629030580016913270220
+      // First 4 digits = game number, next 5 digits = book number
+      if (/^\d{12,}$/.test(barcode)) {
+        const game = barcode.substring(0, 4);
+        const book = barcode.substring(4, 9);
         return { gameNumber: game, bookNumber: book };
       }
+      
       return null;
     }
     
@@ -157,6 +169,12 @@ export const AddBookDialog = ({
       : e.target.value.replace(/\D/g, '');
     setBarcodeInput(value);
   };
+
+  // State-specific limits
+  const gameNumberMaxLength = stateCode === 'DC' ? 4 : 3;
+  const bookNumberMaxLength = stateCode === 'DC' ? 5 : 6;
+  const gameNumberPlaceholder = stateCode === 'DC' ? 'e.g., 1629' : 'e.g., 746';
+  const bookNumberPlaceholder = stateCode === 'DC' ? 'e.g., 03058' : 'e.g., 047551';
 
   const handleGameNumberChange = (value: string) => {
     setGameNumber(value);
@@ -245,13 +263,13 @@ export const AddBookDialog = ({
                 value={barcodeInput}
                 onChange={handleBarcodeChange}
                 onKeyDown={handleBarcodeKeyDown}
-                placeholder={stateCode === 'DC' ? "e.g., 1619-04147-7-017" : "Scan ticket barcode..."}
+                placeholder={stateCode === 'DC' ? "e.g., 1619-04147-7-017 or 1629030580016913270220" : "Scan ticket barcode..."}
                 className="font-mono text-lg"
                 autoFocus
               />
               <p className="text-sm text-muted-foreground">
                 {stateCode === 'DC' 
-                  ? 'Enter barcode in format: 1619-04147-7-017 (Game-Book-X-Ticket)'
+                  ? 'Enter barcode (dashed format or long numeric). Game and book numbers will be extracted.'
                   : 'Scan any ticket from the book. Game and book numbers will be extracted automatically.'
                 }
               </p>
@@ -265,8 +283,8 @@ export const AddBookDialog = ({
                 <Input
                   value={gameNumber}
                   onChange={(e) => handleGameNumberChange(e.target.value.replace(/\D/g, ''))}
-                  placeholder="e.g., 746"
-                  maxLength={3}
+                  placeholder={gameNumberPlaceholder}
+                  maxLength={gameNumberMaxLength}
                 />
               </div>
               <div className="space-y-2">
@@ -274,8 +292,8 @@ export const AddBookDialog = ({
                 <Input
                   value={bookNumber}
                   onChange={(e) => setBookNumber(e.target.value.replace(/\D/g, ''))}
-                  placeholder="e.g., 047551"
-                  maxLength={6}
+                  placeholder={bookNumberPlaceholder}
+                  maxLength={bookNumberMaxLength}
                 />
               </div>
             </div>
