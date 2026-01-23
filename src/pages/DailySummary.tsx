@@ -6,6 +6,7 @@ import { SummaryDateFilter } from '@/components/SummaryDateFilter';
 import { HistoricalBanner } from '@/components/HistoricalBanner';
 import { useTicketStore } from '@/hooks/useTicketStore';
 import { useSummaryHistory } from '@/hooks/useSummaryHistory';
+import { useStoreSettings } from '@/hooks/useStoreSettings';
 import { Button } from '@/components/ui/button';
 import {
   AlertDialog,
@@ -22,7 +23,8 @@ import { RefreshCw, Download, DollarSign, Ticket, Package, History } from 'lucid
 import { toast } from 'sonner';
 
 const DailySummary = () => {
-  const { boxes, resetDailyCounts, getTotals } = useTicketStore();
+  const { settings } = useStoreSettings();
+  const { boxes, resetDailyCounts, getTotals } = useTicketStore(settings.stateCode);
   const {
     historicalSummaries,
     selectedHistoricalData,
@@ -38,14 +40,14 @@ const DailySummary = () => {
     saveHistoricalEdits,
     clearHistoricalSelection,
     getUniqueDaysOfWeek,
-  } = useSummaryHistory();
+  } = useSummaryHistory(settings.stateCode);
 
   const totals = getTotals();
   const [isExporting, setIsExporting] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
-  // Fetch history list on mount
+  // Fetch history list on mount and when state changes
   useEffect(() => {
     fetchSummaryList();
   }, [fetchSummaryList]);
@@ -91,7 +93,7 @@ const DailySummary = () => {
           `$${box.totalAmountSold.toFixed(2)}`
         ].join(',')),
         ['', '', '', '', ''],
-        ['TOTAL', '', '', totals.totalTicketsSold, `$${totals.totalAmountSold.toFixed(2)}`].join(',')
+        ['TOTAL', '', '', totals.totalTickets, `$${totals.totalAmount.toFixed(2)}`].join(',')
       ].join('\n');
 
       const blob = new Blob([csvContent], { type: 'text/csv' });
@@ -149,8 +151,8 @@ const DailySummary = () => {
   const isViewingHistory = selectedHistoricalData !== null;
   const displayTotals = isViewingHistory
     ? {
-        totalTicketsSold: selectedHistoricalData.summary.total_tickets_sold,
-        totalAmountSold: selectedHistoricalData.summary.total_amount_sold,
+        totalTickets: selectedHistoricalData.summary.total_tickets_sold,
+        totalAmount: selectedHistoricalData.summary.total_amount_sold,
         activeBoxes: selectedHistoricalData.summary.active_boxes,
       }
     : totals;
@@ -181,7 +183,7 @@ const DailySummary = () => {
             <Button
               variant="outline"
               onClick={handleExportCSV}
-              disabled={isExporting || (isViewingHistory ? displayTotals.totalTicketsSold === 0 : totals.totalTicketsSold === 0)}
+              disabled={isExporting || displayTotals.totalTickets === 0}
               className="gap-2"
             >
               <Download className="w-4 h-4" />
@@ -273,7 +275,7 @@ const DailySummary = () => {
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Total Tickets Sold</p>
-              <p className="text-4xl font-bold text-foreground">{displayTotals.totalTicketsSold}</p>
+              <p className="text-4xl font-bold text-foreground">{displayTotals.totalTickets}</p>
             </div>
           </div>
           <div className="stat-card flex items-center gap-4">
@@ -282,7 +284,7 @@ const DailySummary = () => {
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Total Revenue</p>
-              <p className="text-4xl font-bold text-success">${displayTotals.totalAmountSold.toFixed(2)}</p>
+              <p className="text-4xl font-bold text-success">${displayTotals.totalAmount.toFixed(2)}</p>
             </div>
           </div>
         </div>

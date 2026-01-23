@@ -20,6 +20,7 @@ export type Database = {
           created_at: string
           id: string
           last_scanned_ticket_number: number | null
+          state_code: string
           summary_id: string
           ticket_price: number
           tickets_sold: number
@@ -31,6 +32,7 @@ export type Database = {
           created_at?: string
           id?: string
           last_scanned_ticket_number?: number | null
+          state_code?: string
           summary_id: string
           ticket_price: number
           tickets_sold?: number
@@ -42,6 +44,7 @@ export type Database = {
           created_at?: string
           id?: string
           last_scanned_ticket_number?: number | null
+          state_code?: string
           summary_id?: string
           ticket_price?: number
           tickets_sold?: number
@@ -64,6 +67,7 @@ export type Database = {
           created_at: string
           day_of_week: string
           id: string
+          state_code: string
           summary_date: string
           total_amount_sold: number
           total_tickets_sold: number
@@ -74,6 +78,7 @@ export type Database = {
           created_at?: string
           day_of_week: string
           id?: string
+          state_code?: string
           summary_date: string
           total_amount_sold?: number
           total_tickets_sold?: number
@@ -84,6 +89,7 @@ export type Database = {
           created_at?: string
           day_of_week?: string
           id?: string
+          state_code?: string
           summary_date?: string
           total_amount_sold?: number
           total_tickets_sold?: number

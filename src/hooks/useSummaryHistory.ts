@@ -1,21 +1,18 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { DailySummary, DailyBoxSale, HistoricalSummaryData } from '@/types/summary';
 import { TicketBox } from '@/types/ticket';
+import { StateCode } from '@/types/settings';
 import { logErrorSecurely } from '@/lib/errorHandler';
 
 const getDayOfWeek = (date: Date): string => {
   return date.toLocaleDateString('en-US', { weekday: 'long' });
 };
 
-const formatDateForDB = (date: Date): string => {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-};
+// State-specific localStorage key generator
+const getDailyStorageKey = (stateCode: StateCode) => `scratchoff-daily-data-${stateCode}`;
 
-export const useSummaryHistory = () => {
+export const useSummaryHistory = (stateCode: StateCode) => {
   const [historicalSummaries, setHistoricalSummaries] = useState<DailySummary[]>([]);
   const [selectedHistoricalData, setSelectedHistoricalData] = useState<HistoricalSummaryData | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -25,13 +22,22 @@ export const useSummaryHistory = () => {
   // Application-level lock to prevent race conditions in save operations
   const saveLockRef = useRef<Promise<{ success: boolean; message: string }>>(Promise.resolve({ success: true, message: '' }));
 
-  // Fetch all historical summaries for filtering
+  // Clear historical selection when state changes
+  useEffect(() => {
+    setSelectedHistoricalData(null);
+    setIsEditMode(false);
+    setEditedBoxSales([]);
+    setHistoricalSummaries([]);
+  }, [stateCode]);
+
+  // Fetch all historical summaries for filtering (state-specific)
   const fetchSummaryList = useCallback(async () => {
     setIsLoading(true);
     try {
       const { data, error } = await supabase
         .from('daily_summaries')
         .select('*')
+        .eq('state_code', stateCode)
         .order('summary_date', { ascending: false });
 
       if (error) throw error;
@@ -41,9 +47,9 @@ export const useSummaryHistory = () => {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [stateCode]);
 
-  // Fetch a specific historical summary with box sales
+  // Fetch a specific historical summary with box sales (state-specific)
   const fetchHistoricalSummary = useCallback(async (summaryDate: string) => {
     setIsLoading(true);
     setIsEditMode(false);
@@ -52,6 +58,7 @@ export const useSummaryHistory = () => {
         .from('daily_summaries')
         .select('*')
         .eq('summary_date', summaryDate)
+        .eq('state_code', stateCode)
         .maybeSingle();
 
       if (summaryError) throw summaryError;
@@ -65,6 +72,7 @@ export const useSummaryHistory = () => {
         .from('daily_box_sales')
         .select('*')
         .eq('summary_id', summaryData.id)
+        .eq('state_code', stateCode)
         .order('box_number', { ascending: true });
 
       if (boxError) throw boxError;
@@ -83,7 +91,7 @@ export const useSummaryHistory = () => {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [stateCode]);
 
   // Save today's summary to history (called on reset) - with application-level lock to prevent race conditions
   const saveDailySummary = useCallback(async (boxes: TicketBox[]) => {
@@ -93,7 +101,7 @@ export const useSummaryHistory = () => {
       // This ensures we save under the correct date even if the calendar day has changed
       let businessDate: string;
       try {
-        const dailyStored = localStorage.getItem('scratchoff-daily-data');
+        const dailyStored = localStorage.getItem(getDailyStorageKey(stateCode));
         if (dailyStored) {
           const dailyData = JSON.parse(dailyStored);
           businessDate = dailyData.date;
@@ -121,11 +129,12 @@ export const useSummaryHistory = () => {
       const totalAmountSold = configuredBoxes.reduce((sum, b) => sum + b.totalAmountSold, 0);
 
       try {
-        // Check if summary exists for today (upsert)
+        // Check if summary exists for today and this state (upsert)
         const { data: existingSummary } = await supabase
           .from('daily_summaries')
           .select('id')
           .eq('summary_date', summaryDate)
+          .eq('state_code', stateCode)
           .maybeSingle();
 
         let summaryId: string;
@@ -150,7 +159,7 @@ export const useSummaryHistory = () => {
             .delete()
             .eq('summary_id', summaryId);
         } else {
-          // Insert new summary
+          // Insert new summary with state_code
           const { data: newSummary, error: insertError } = await supabase
             .from('daily_summaries')
             .insert({
@@ -159,6 +168,7 @@ export const useSummaryHistory = () => {
               total_tickets_sold: totalTicketsSold,
               total_amount_sold: totalAmountSold,
               active_boxes: configuredBoxes.length,
+              state_code: stateCode,
             })
             .select()
             .single();
@@ -167,7 +177,7 @@ export const useSummaryHistory = () => {
           summaryId = newSummary.id;
         }
 
-        // Insert box sales
+        // Insert box sales with state_code
         const boxSalesData = configuredBoxes.map(box => ({
           summary_id: summaryId,
           box_number: box.boxNumber,
@@ -175,6 +185,7 @@ export const useSummaryHistory = () => {
           last_scanned_ticket_number: box.lastScannedTicketNumber,
           tickets_sold: box.ticketsSold,
           total_amount_sold: box.totalAmountSold,
+          state_code: stateCode,
         }));
 
         const { error: boxSalesError } = await supabase
@@ -193,7 +204,7 @@ export const useSummaryHistory = () => {
     // Chain the save operation to prevent concurrent execution
     saveLockRef.current = saveLockRef.current.then(saveOperation).catch(() => saveOperation());
     return saveLockRef.current;
-  }, []);
+  }, [stateCode]);
 
   // Enter edit mode for historical data
   const enterEditMode = useCallback(() => {

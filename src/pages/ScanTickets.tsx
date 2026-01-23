@@ -22,8 +22,8 @@ import {
 } from '@/components/ui/dialog';
 
 const ScanTickets = () => {
-  const { boxes, processBarcode, processManualEntry, scanHistory, lastScanResult, lastError, getTotals } = useTicketStore();
   const { settings, updateStateCode, updateTicketOrder } = useStoreSettings();
+  const { boxes, processBarcode, processManualEntry, scanHistory, lastScanResult, lastError, getTotals } = useTicketStore(settings.stateCode);
   const [selectedBox, setSelectedBox] = useState<number | null>(null);
   const [autoAdvance, setAutoAdvance] = useState(false);
   const [manualEntryOpen, setManualEntryOpen] = useState(false);
@@ -98,7 +98,7 @@ const ScanTickets = () => {
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Total Tickets Sold</p>
-              <p className="text-3xl font-bold text-foreground">{totals.totalTicketsSold}</p>
+              <p className="text-3xl font-bold text-foreground">{totals.totalTickets}</p>
             </div>
           </div>
           <div className="stat-card flex items-center gap-4">
@@ -107,7 +107,7 @@ const ScanTickets = () => {
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Total Amount</p>
-              <p className="text-3xl font-bold text-success">${totals.totalAmountSold.toFixed(2)}</p>
+              <p className="text-3xl font-bold text-success">${totals.totalAmount.toFixed(2)}</p>
             </div>
           </div>
         </div>

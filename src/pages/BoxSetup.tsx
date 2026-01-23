@@ -9,8 +9,8 @@ import { Package, Plus, BookOpen } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 const BoxSetup = () => {
-  const { boxes, updateBox, addBox, addBoxWithNumber, addBookToBox, removeBox, gameRegistry } = useTicketStore();
   const { settings, updateStateCode, updateTicketOrder } = useStoreSettings();
+  const { boxes, updateBox, addBox, addBoxWithNumber, addBookToBox, removeBox, gameRegistry } = useTicketStore(settings.stateCode);
   const configuredCount = boxes.filter(b => b.isConfigured).length;
   const [isAddBookDialogOpen, setIsAddBookDialogOpen] = useState(false);
   const [selectedBoxForBook, setSelectedBoxForBook] = useState<number | null>(null);
