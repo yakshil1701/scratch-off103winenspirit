@@ -4,6 +4,7 @@ import { DailySummary, DailyBoxSale, HistoricalSummaryData } from '@/types/summa
 import { TicketBox } from '@/types/ticket';
 import { StateCode } from '@/types/settings';
 import { logErrorSecurely } from '@/lib/errorHandler';
+import { useAuth } from '@/hooks/useAuth';
 
 const getDayOfWeek = (date: Date): string => {
   return date.toLocaleDateString('en-US', { weekday: 'long' });
@@ -13,6 +14,7 @@ const getDayOfWeek = (date: Date): string => {
 const getDailyStorageKey = (stateCode: StateCode) => `scratchoff-daily-data-${stateCode}`;
 
 export const useSummaryHistory = (stateCode: StateCode) => {
+  const { user } = useAuth();
   const [historicalSummaries, setHistoricalSummaries] = useState<DailySummary[]>([]);
   const [selectedHistoricalData, setSelectedHistoricalData] = useState<HistoricalSummaryData | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -30,14 +32,17 @@ export const useSummaryHistory = (stateCode: StateCode) => {
     setHistoricalSummaries([]);
   }, [stateCode]);
 
-  // Fetch all historical summaries for filtering (state-specific)
+  // Fetch all historical summaries for filtering (state-specific and user-specific)
   const fetchSummaryList = useCallback(async () => {
+    if (!user) return;
+    
     setIsLoading(true);
     try {
       const { data, error } = await supabase
         .from('daily_summaries')
         .select('*')
         .eq('state_code', stateCode)
+        .eq('user_id', user.id)
         .order('summary_date', { ascending: false });
 
       if (error) throw error;
@@ -47,10 +52,12 @@ export const useSummaryHistory = (stateCode: StateCode) => {
     } finally {
       setIsLoading(false);
     }
-  }, [stateCode]);
+  }, [stateCode, user]);
 
-  // Fetch a specific historical summary with box sales (state-specific)
+  // Fetch a specific historical summary with box sales (state-specific and user-specific)
   const fetchHistoricalSummary = useCallback(async (summaryDate: string) => {
+    if (!user) return null;
+    
     setIsLoading(true);
     setIsEditMode(false);
     try {
@@ -59,6 +66,7 @@ export const useSummaryHistory = (stateCode: StateCode) => {
         .select('*')
         .eq('summary_date', summaryDate)
         .eq('state_code', stateCode)
+        .eq('user_id', user.id)
         .maybeSingle();
 
       if (summaryError) throw summaryError;
@@ -73,6 +81,7 @@ export const useSummaryHistory = (stateCode: StateCode) => {
         .select('*')
         .eq('summary_id', summaryData.id)
         .eq('state_code', stateCode)
+        .eq('user_id', user.id)
         .order('box_number', { ascending: true });
 
       if (boxError) throw boxError;
@@ -91,10 +100,12 @@ export const useSummaryHistory = (stateCode: StateCode) => {
     } finally {
       setIsLoading(false);
     }
-  }, [stateCode]);
+  }, [stateCode, user]);
 
   // Save today's summary to history (called on reset) - with application-level lock to prevent race conditions
   const saveDailySummary = useCallback(async (boxes: TicketBox[]) => {
+    if (!user) return { success: false, message: 'Not authenticated' };
+    
     // Queue saves to prevent concurrent execution (race condition prevention)
     const saveOperation = async (): Promise<{ success: boolean; message: string }> => {
       // Get the actual business date from localStorage (the date when scanning started)
@@ -129,12 +140,13 @@ export const useSummaryHistory = (stateCode: StateCode) => {
       const totalAmountSold = configuredBoxes.reduce((sum, b) => sum + b.totalAmountSold, 0);
 
       try {
-        // Check if summary exists for today and this state (upsert)
+        // Check if summary exists for today, this state, and this user (upsert)
         const { data: existingSummary } = await supabase
           .from('daily_summaries')
           .select('id')
           .eq('summary_date', summaryDate)
           .eq('state_code', stateCode)
+          .eq('user_id', user.id)
           .maybeSingle();
 
         let summaryId: string;
@@ -159,7 +171,7 @@ export const useSummaryHistory = (stateCode: StateCode) => {
             .delete()
             .eq('summary_id', summaryId);
         } else {
-          // Insert new summary with state_code
+          // Insert new summary with state_code and user_id
           const { data: newSummary, error: insertError } = await supabase
             .from('daily_summaries')
             .insert({
@@ -169,6 +181,7 @@ export const useSummaryHistory = (stateCode: StateCode) => {
               total_amount_sold: totalAmountSold,
               active_boxes: configuredBoxes.length,
               state_code: stateCode,
+              user_id: user.id,
             })
             .select()
             .single();
@@ -177,7 +190,7 @@ export const useSummaryHistory = (stateCode: StateCode) => {
           summaryId = newSummary.id;
         }
 
-        // Insert box sales with state_code
+        // Insert box sales with state_code and user_id
         const boxSalesData = configuredBoxes.map(box => ({
           summary_id: summaryId,
           box_number: box.boxNumber,
@@ -186,6 +199,7 @@ export const useSummaryHistory = (stateCode: StateCode) => {
           tickets_sold: box.ticketsSold,
           total_amount_sold: box.totalAmountSold,
           state_code: stateCode,
+          user_id: user.id,
         }));
 
         const { error: boxSalesError } = await supabase
@@ -204,7 +218,7 @@ export const useSummaryHistory = (stateCode: StateCode) => {
     // Chain the save operation to prevent concurrent execution
     saveLockRef.current = saveLockRef.current.then(saveOperation).catch(() => saveOperation());
     return saveLockRef.current;
-  }, [stateCode]);
+  }, [stateCode, user]);
 
   // Enter edit mode for historical data
   const enterEditMode = useCallback(() => {

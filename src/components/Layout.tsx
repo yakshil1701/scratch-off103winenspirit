@@ -1,6 +1,9 @@
 import { ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Settings, ScanBarcode, FileText, Ticket } from 'lucide-react';
+import { Settings, ScanBarcode, FileText, Ticket, LogOut } from 'lucide-react';
+import { useAuth } from '@/hooks/useAuth';
+import { Button } from '@/components/ui/button';
+import { useToast } from '@/hooks/use-toast';
 
 interface LayoutProps {
   children: ReactNode;
@@ -14,6 +17,16 @@ const navItems = [
 
 export const Layout = ({ children }: LayoutProps) => {
   const location = useLocation();
+  const { user, signOut } = useAuth();
+  const { toast } = useToast();
+
+  const handleSignOut = async () => {
+    await signOut();
+    toast({
+      title: 'Signed out',
+      description: 'You have been successfully signed out.',
+    });
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -30,6 +43,22 @@ export const Layout = ({ children }: LayoutProps) => {
                 <p className="text-sm text-muted-foreground">Ticket Inventory System</p>
               </div>
             </div>
+            {user && (
+              <div className="flex items-center gap-3">
+                <span className="text-sm text-muted-foreground hidden sm:block">
+                  {user.email}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleSignOut}
+                  className="flex items-center gap-2"
+                >
+                  <LogOut className="w-4 h-4" />
+                  <span className="hidden sm:inline">Sign Out</span>
+                </Button>
+              </div>
+            )}
           </div>
         </div>
       </header>
