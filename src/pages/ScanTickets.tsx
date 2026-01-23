@@ -57,11 +57,10 @@ const ScanTickets = () => {
 
   const handleManualEntry = () => {
     if (selectedBox === null) return;
+    if (manualTicketNumber.length < 4) return;
     
-    const ticketNum = parseInt(manualTicketNumber, 10);
-    if (isNaN(ticketNum)) return;
-    
-    const { result } = processManualEntry(ticketNum, selectedBox, settings.ticketOrder);
+    // Process manual entry exactly like a scanned barcode
+    const { result } = processBarcode(manualTicketNumber, selectedBox, settings.stateCode, settings.ticketOrder);
     
     // Auto-advance only on successful entry
     if (autoAdvance && result?.success) {
@@ -196,10 +195,10 @@ const ScanTickets = () => {
         <Dialog open={manualEntryOpen} onOpenChange={setManualEntryOpen}>
           <DialogContent className="sm:max-w-md">
             <DialogHeader>
-              <DialogTitle>Manual Ticket Entry</DialogTitle>
+              <DialogTitle>Manual Barcode Entry</DialogTitle>
               <DialogDescription>
-                Enter the current ticket number for Box {selectedBox}. 
-                Use this when a box is empty (enter 0) or when you can't scan the barcode.
+                Enter the barcode value for Box {selectedBox}. 
+                This will be processed exactly like a scanned barcode.
                 {selectedBoxData && (
                   <span className="block mt-2 text-foreground">
                     Current position: #{selectedBoxData.lastScannedTicketNumber ?? selectedBoxData.startingTicketNumber}
@@ -209,28 +208,40 @@ const ScanTickets = () => {
             </DialogHeader>
             <div className="flex flex-col gap-4 py-4">
               <div className="flex flex-col gap-2">
-                <Label htmlFor="ticket-number">Ticket Number</Label>
+                <Label htmlFor="manual-barcode">Barcode Value</Label>
                 <Input
-                  id="ticket-number"
-                  type="number"
-                  min="0"
-                  placeholder="Enter ticket number (e.g., 0 for empty box)"
+                  id="manual-barcode"
+                  type="text"
+                  placeholder={settings.stateCode === 'DC' ? "e.g., 1619-04147-7-017" : "Enter barcode (e.g., 20 digits)"}
                   value={manualTicketNumber}
-                  onChange={(e) => setManualTicketNumber(e.target.value)}
+                  onChange={(e) => {
+                    // Allow numeric input and dashes for DC format
+                    const value = settings.stateCode === 'DC' 
+                      ? e.target.value.replace(/[^0-9-]/g, '')
+                      : e.target.value.replace(/\D/g, '');
+                    setManualTicketNumber(value);
+                  }}
                   onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
+                    if (e.key === 'Enter' && manualTicketNumber.length >= 4) {
                       handleManualEntry();
                     }
                   }}
+                  className="font-mono text-lg"
                   autoFocus
                 />
+                <p className="text-sm text-muted-foreground">
+                  {settings.stateCode === 'DC' 
+                    ? 'Enter barcode in format: 1619-04147-7-017'
+                    : 'Enter the full barcode value (minimum 4 digits)'
+                  }
+                </p>
               </div>
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setManualEntryOpen(false)}>
                 Cancel
               </Button>
-              <Button onClick={handleManualEntry} disabled={manualTicketNumber === ''}>
+              <Button onClick={handleManualEntry} disabled={manualTicketNumber.length < 4}>
                 Submit
               </Button>
             </DialogFooter>
