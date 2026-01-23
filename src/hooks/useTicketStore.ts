@@ -225,25 +225,39 @@ export const useTicketStore = () => {
   // Extract game number, book number, and ticket number from barcode based on state
   const extractBarcodeInfo = useCallback((barcode: string, stateCode: StateCode): { gameNumber: string; bookNumber: string; ticketNumber: number } | null => {
     if (stateCode === 'DC') {
-      // Washington DC format: 1619-04147-7-017 (with dashes)
-      // Remove dashes and validate
-      const cleanBarcode = barcode.replace(/-/g, '');
+      // Check if it's a dashed format: 1619-04147-7-017
+      if (barcode.includes('-')) {
+        const segments = barcode.split('-');
+        if (segments.length >= 3) {
+          // Game number: first segment (e.g., "1619")
+          const gameNumber = segments[0];
+          // Book number: second segment (e.g., "04147")
+          const bookNumber = segments[1];
+          // Ticket number: last segment (e.g., "017")
+          const ticketStr = segments[segments.length - 1];
+          const ticketNumber = parseInt(ticketStr, 10);
+          
+          if (!isNaN(ticketNumber) && gameNumber && bookNumber) {
+            return { gameNumber, bookNumber, ticketNumber };
+          }
+        }
+        return null;
+      }
       
-      // Split by dash to get segments
-      const segments = barcode.split('-');
-      if (segments.length >= 3) {
-        // Game number: first segment (e.g., "1619")
-        const gameNumber = segments[0];
-        // Book number: second segment (e.g., "04147")
-        const bookNumber = segments[1];
-        // Ticket number: last segment (e.g., "017")
-        const ticketStr = segments[segments.length - 1];
+      // Long numeric DC format: 1629030580016913270220
+      // Extract: first 4 digits = game number, next 5 digits = book number, next 3 digits = ticket number
+      // Minimum 12 digits required (4 + 5 + 3)
+      if (/^\d{12,}$/.test(barcode)) {
+        const gameNumber = barcode.substring(0, 4);      // First 4 digits (e.g., "1629")
+        const bookNumber = barcode.substring(4, 9);      // Next 5 digits (e.g., "03058")
+        const ticketStr = barcode.substring(9, 12);      // Next 3 digits (e.g., "001")
         const ticketNumber = parseInt(ticketStr, 10);
         
         if (!isNaN(ticketNumber) && gameNumber && bookNumber) {
           return { gameNumber, bookNumber, ticketNumber };
         }
       }
+      
       return null;
     }
     
@@ -461,7 +475,7 @@ export const useTicketStore = () => {
     
     if (barcodeInfo === null) {
       const errorMessage = stateCode === 'DC' 
-        ? 'Invalid barcode format. Expected format: 1619-04147-7-017'
+        ? 'Invalid barcode format. Expected format: 1619-04147-7-017 or long numeric (12+ digits)'
         : 'Invalid barcode format. Expected 20 digits.';
       const error: ScanError = {
         type: 'invalid_barcode',
