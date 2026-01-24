@@ -14,6 +14,54 @@ export type Database = {
   }
   public: {
     Tables: {
+      box_configurations: {
+        Row: {
+          book_number: string | null
+          box_number: number
+          created_at: string
+          game_number: string | null
+          id: string
+          is_configured: boolean
+          last_scanned_ticket_number: number | null
+          starting_ticket_number: number
+          state_code: string
+          ticket_price: number
+          total_tickets_per_book: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          book_number?: string | null
+          box_number: number
+          created_at?: string
+          game_number?: string | null
+          id?: string
+          is_configured?: boolean
+          last_scanned_ticket_number?: number | null
+          starting_ticket_number?: number
+          state_code?: string
+          ticket_price?: number
+          total_tickets_per_book?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          book_number?: string | null
+          box_number?: number
+          created_at?: string
+          game_number?: string | null
+          id?: string
+          is_configured?: boolean
+          last_scanned_ticket_number?: number | null
+          starting_ticket_number?: number
+          state_code?: string
+          ticket_price?: number
+          total_tickets_per_book?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       daily_box_sales: {
         Row: {
           box_number: number
@@ -64,6 +112,42 @@ export type Database = {
           },
         ]
       }
+      daily_scanning_state: {
+        Row: {
+          box_number: number
+          business_date: string
+          created_at: string
+          id: string
+          state_code: string
+          tickets_sold: number
+          total_amount_sold: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          box_number: number
+          business_date?: string
+          created_at?: string
+          id?: string
+          state_code?: string
+          tickets_sold?: number
+          total_amount_sold?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          box_number?: number
+          business_date?: string
+          created_at?: string
+          id?: string
+          state_code?: string
+          tickets_sold?: number
+          total_amount_sold?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       daily_summaries: {
         Row: {
           active_boxes: number
@@ -100,6 +184,66 @@ export type Database = {
           total_tickets_sold?: number
           updated_at?: string
           user_id?: string | null
+        }
+        Relationships: []
+      }
+      game_registry: {
+        Row: {
+          created_at: string
+          game_number: string
+          id: string
+          state_code: string
+          ticket_price: number
+          total_tickets_per_book: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          game_number: string
+          id?: string
+          state_code?: string
+          ticket_price: number
+          total_tickets_per_book: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          game_number?: string
+          id?: string
+          state_code?: string
+          ticket_price?: number
+          total_tickets_per_book?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      user_settings: {
+        Row: {
+          created_at: string
+          id: string
+          state_code: string
+          ticket_order: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          state_code?: string
+          ticket_order?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          state_code?: string
+          ticket_order?: string
+          updated_at?: string
+          user_id?: string
         }
         Relationships: []
       }

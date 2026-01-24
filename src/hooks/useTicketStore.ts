@@ -1,12 +1,9 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { TicketBox, ScanResult, ScanError, GameInfo } from '@/types/ticket';
 import { StateCode, TicketOrder } from '@/types/settings';
 import { logErrorSecurely } from '@/lib/errorHandler';
-
-// State-specific localStorage key generators
-const getConfigStorageKey = (stateCode: StateCode) => `scratchoff-box-config-${stateCode}`;
-const getDailyStorageKey = (stateCode: StateCode) => `scratchoff-daily-data-${stateCode}`;
-const getGameRegistryKey = (stateCode: StateCode) => `scratchoff-game-registry-${stateCode}`;
+import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/hooks/useAuth';
 
 const getTodayDateString = () => {
   const now = new Date();
@@ -30,141 +27,220 @@ const createNewBox = (boxNumber: number): TicketBox => ({
   bookNumber: null,
 });
 
-const createInitialBoxes = (): TicketBox[] => {
-  // Start with no boxes - user will add as needed
-  return [];
-};
-
-const loadGameRegistry = (stateCode: StateCode): GameInfo[] => {
-  try {
-    const stored = localStorage.getItem(getGameRegistryKey(stateCode));
-    if (stored) {
-      return JSON.parse(stored);
-    }
-  } catch {
-    logErrorSecurely('loadGameRegistry');
-  }
-  return [];
-};
-
-interface DailyData {
-  date: string;
-  dailyCounts: Record<number, { ticketsSold: number; totalAmountSold: number }>;
-}
-
-const loadBoxes = (stateCode: StateCode): TicketBox[] => {
-  try {
-    // Load persisted box configuration for this state
-    const configStored = localStorage.getItem(getConfigStorageKey(stateCode));
-    const dailyStored = localStorage.getItem(getDailyStorageKey(stateCode));
-    
-    if (!configStored) {
-      return createInitialBoxes();
-    }
-    
-    const configParsed = JSON.parse(configStored);
-    let boxes: TicketBox[] = configParsed.boxes || createInitialBoxes();
-    
-    // Check if we need to reset daily counts (new day)
-    const today = getTodayDateString();
-    let dailyData: DailyData | null = null;
-    
-    if (dailyStored) {
-      dailyData = JSON.parse(dailyStored);
-    }
-    
-    if (!dailyData || dailyData.date !== today) {
-      // New day: reset daily counts but preserve lastScannedTicketNumber
-      boxes = boxes.map(box => ({
-        ...box,
-        ticketsSold: 0,
-        totalAmountSold: 0,
-      }));
-      // Save the reset state
-      localStorage.setItem(getDailyStorageKey(stateCode), JSON.stringify({
-        date: today,
-        dailyCounts: {},
-      }));
-    } else {
-      // Same day: restore daily counts
-      boxes = boxes.map(box => {
-        const dailyCounts = dailyData?.dailyCounts[box.boxNumber];
-        if (dailyCounts) {
-          return {
-            ...box,
-            ticketsSold: dailyCounts.ticketsSold,
-            totalAmountSold: dailyCounts.totalAmountSold,
-          };
-        }
-        return box;
-      });
-    }
-    
-    return boxes;
-  } catch {
-    logErrorSecurely('loadStoredData');
-    return createInitialBoxes();
-  }
-};
-
 export const useTicketStore = (stateCode: StateCode) => {
-  const [boxes, setBoxes] = useState<TicketBox[]>(() => loadBoxes(stateCode));
-  const [gameRegistry, setGameRegistry] = useState<GameInfo[]>(() => loadGameRegistry(stateCode));
-
+  const { user } = useAuth();
+  const [boxes, setBoxes] = useState<TicketBox[]>([]);
+  const [gameRegistry, setGameRegistry] = useState<GameInfo[]>([]);
   const [scanHistory, setScanHistory] = useState<ScanResult[]>([]);
   const [lastScanResult, setLastScanResult] = useState<ScanResult | null>(null);
   const [lastError, setLastError] = useState<ScanError | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSyncing, setIsSyncing] = useState(false);
+  
+  // Debounce refs for syncing
+  const boxSyncTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const dailySyncTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Reload data when stateCode changes
+  // Fetch boxes and game registry from server
+  const fetchDataFromServer = useCallback(async () => {
+    if (!user) {
+      setBoxes([]);
+      setGameRegistry([]);
+      setIsLoading(false);
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const today = getTodayDateString();
+
+      // Fetch box configurations
+      const { data: boxData, error: boxError } = await supabase
+        .from('box_configurations')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('state_code', stateCode)
+        .order('box_number', { ascending: true });
+
+      if (boxError) throw boxError;
+
+      // Fetch today's daily scanning state
+      const { data: dailyData, error: dailyError } = await supabase
+        .from('daily_scanning_state')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('state_code', stateCode)
+        .eq('business_date', today);
+
+      if (dailyError) throw dailyError;
+
+      // Fetch game registry
+      const { data: gameData, error: gameError } = await supabase
+        .from('game_registry')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('state_code', stateCode);
+
+      if (gameError) throw gameError;
+
+      // Map box configurations with daily counts
+      const dailyCountsMap = new Map(
+        (dailyData || []).map(d => [d.box_number, { ticketsSold: d.tickets_sold, totalAmountSold: Number(d.total_amount_sold) }])
+      );
+
+      const loadedBoxes: TicketBox[] = (boxData || []).map(box => ({
+        id: box.box_number,
+        boxNumber: box.box_number,
+        ticketPrice: Number(box.ticket_price),
+        totalTicketsPerBook: box.total_tickets_per_book,
+        startingTicketNumber: box.starting_ticket_number,
+        lastScannedTicketNumber: box.last_scanned_ticket_number,
+        ticketsSold: dailyCountsMap.get(box.box_number)?.ticketsSold ?? 0,
+        totalAmountSold: dailyCountsMap.get(box.box_number)?.totalAmountSold ?? 0,
+        isConfigured: box.is_configured,
+        gameNumber: box.game_number,
+        bookNumber: box.book_number,
+      }));
+
+      setBoxes(loadedBoxes);
+      setGameRegistry(
+        (gameData || []).map(g => ({
+          gameNumber: g.game_number,
+          ticketPrice: Number(g.ticket_price),
+          totalTicketsPerBook: g.total_tickets_per_book,
+        }))
+      );
+    } catch {
+      logErrorSecurely('fetchDataFromServer');
+      setBoxes([]);
+      setGameRegistry([]);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [user, stateCode]);
+
+  // Fetch data on mount and when user/stateCode changes
   useEffect(() => {
-    setBoxes(loadBoxes(stateCode));
-    setGameRegistry(loadGameRegistry(stateCode));
+    fetchDataFromServer();
+    // Clear transient state
     setScanHistory([]);
     setLastScanResult(null);
     setLastError(null);
-  }, [stateCode]);
+  }, [fetchDataFromServer]);
 
-  // Persist game registry to localStorage (state-specific)
-  useEffect(() => {
-    try {
-      localStorage.setItem(getGameRegistryKey(stateCode), JSON.stringify(gameRegistry));
-    } catch {
-      logErrorSecurely('saveGameRegistry');
-    }
-  }, [gameRegistry, stateCode]);
+  // Sync box configuration to server (debounced)
+  const syncBoxToServer = useCallback(async (box: TicketBox) => {
+    if (!user) return;
 
-  // Persist box configuration to localStorage (state-specific)
-  useEffect(() => {
     try {
-      localStorage.setItem(getConfigStorageKey(stateCode), JSON.stringify({ boxes }));
-      
-      // Also update daily counts
-      const today = getTodayDateString();
-      const dailyCounts: Record<number, { ticketsSold: number; totalAmountSold: number }> = {};
-      boxes.forEach(box => {
-        if (box.ticketsSold > 0 || box.totalAmountSold > 0) {
-          dailyCounts[box.boxNumber] = {
-            ticketsSold: box.ticketsSold,
-            totalAmountSold: box.totalAmountSold,
-          };
-        }
-      });
-      localStorage.setItem(getDailyStorageKey(stateCode), JSON.stringify({ date: today, dailyCounts }));
+      const { error } = await supabase
+        .from('box_configurations')
+        .upsert({
+          user_id: user.id,
+          state_code: stateCode,
+          box_number: box.boxNumber,
+          ticket_price: box.ticketPrice,
+          total_tickets_per_book: box.totalTicketsPerBook,
+          starting_ticket_number: box.startingTicketNumber,
+          last_scanned_ticket_number: box.lastScannedTicketNumber,
+          is_configured: box.isConfigured,
+          game_number: box.gameNumber,
+          book_number: box.bookNumber,
+        }, {
+          onConflict: 'user_id,state_code,box_number',
+        });
+
+      if (error) throw error;
     } catch {
-      logErrorSecurely('saveStoredData');
+      logErrorSecurely('syncBoxToServer');
     }
-  }, [boxes, stateCode]);
+  }, [user, stateCode]);
+
+  // Sync daily scanning state to server (debounced)
+  const syncDailyStateToServer = useCallback(async (box: TicketBox) => {
+    if (!user) return;
+
+    const today = getTodayDateString();
+
+    try {
+      const { error } = await supabase
+        .from('daily_scanning_state')
+        .upsert({
+          user_id: user.id,
+          state_code: stateCode,
+          business_date: today,
+          box_number: box.boxNumber,
+          tickets_sold: box.ticketsSold,
+          total_amount_sold: box.totalAmountSold,
+        }, {
+          onConflict: 'user_id,state_code,business_date,box_number',
+        });
+
+      if (error) throw error;
+    } catch {
+      logErrorSecurely('syncDailyStateToServer');
+    }
+  }, [user, stateCode]);
+
+  // Sync game to registry on server
+  const syncGameToServer = useCallback(async (game: GameInfo) => {
+    if (!user) return;
+
+    try {
+      const { error } = await supabase
+        .from('game_registry')
+        .upsert({
+          user_id: user.id,
+          state_code: stateCode,
+          game_number: game.gameNumber,
+          ticket_price: game.ticketPrice,
+          total_tickets_per_book: game.totalTicketsPerBook,
+        }, {
+          onConflict: 'user_id,state_code,game_number',
+        });
+
+      if (error) throw error;
+    } catch {
+      logErrorSecurely('syncGameToServer');
+    }
+  }, [user, stateCode]);
+
+  // Delete box from server
+  const deleteBoxFromServer = useCallback(async (boxNumber: number) => {
+    if (!user) return;
+
+    try {
+      await supabase
+        .from('box_configurations')
+        .delete()
+        .eq('user_id', user.id)
+        .eq('state_code', stateCode)
+        .eq('box_number', boxNumber);
+
+      // Also delete daily state for this box
+      await supabase
+        .from('daily_scanning_state')
+        .delete()
+        .eq('user_id', user.id)
+        .eq('state_code', stateCode)
+        .eq('box_number', boxNumber);
+    } catch {
+      logErrorSecurely('deleteBoxFromServer');
+    }
+  }, [user, stateCode]);
 
   // Register a game in the global registry
   const registerGame = useCallback((gameNumber: string, ticketPrice: number, totalTicketsPerBook: number) => {
     setGameRegistry(prev => {
       const existing = prev.find(g => g.gameNumber === gameNumber);
       if (existing) {
-        return prev; // Game already registered
+        return prev;
       }
-      return [...prev, { gameNumber, ticketPrice, totalTicketsPerBook }];
+      const newGame = { gameNumber, ticketPrice, totalTicketsPerBook };
+      syncGameToServer(newGame);
+      return [...prev, newGame];
     });
-  }, []);
+  }, [syncGameToServer]);
 
   // Add a book to a box (configures the box with game info)
   const addBookToBox = useCallback((
@@ -175,13 +251,12 @@ export const useTicketStore = (stateCode: StateCode) => {
     totalTicketsPerBook: number,
     startingTicketNumber: number
   ) => {
-    // First, ensure game is in registry
     registerGame(gameNumber, ticketPrice, totalTicketsPerBook);
     
-    // Update the box with book info
-    setBoxes(prev => prev.map(box => 
-      box.boxNumber === boxNumber 
-        ? {
+    setBoxes(prev => {
+      const updated = prev.map(box => {
+        if (box.boxNumber === boxNumber) {
+          const newBox = {
             ...box,
             gameNumber,
             bookNumber,
@@ -192,57 +267,68 @@ export const useTicketStore = (stateCode: StateCode) => {
             ticketsSold: 0,
             totalAmountSold: 0,
             isConfigured: true,
-          }
-        : box
-    ));
-  }, [registerGame]);
+          };
+          syncBoxToServer(newBox);
+          syncDailyStateToServer(newBox);
+          return newBox;
+        }
+        return box;
+      });
+      return updated;
+    });
+  }, [registerGame, syncBoxToServer, syncDailyStateToServer]);
 
   const updateBox = useCallback((boxNumber: number, updates: Partial<TicketBox>) => {
-    setBoxes(prev => prev.map(box => 
-      box.boxNumber === boxNumber 
-        ? { ...box, ...updates, isConfigured: true }
-        : box
-    ));
-  }, []);
+    setBoxes(prev => {
+      const updated = prev.map(box => {
+        if (box.boxNumber === boxNumber) {
+          const newBox = { ...box, ...updates, isConfigured: true };
+          syncBoxToServer(newBox);
+          return newBox;
+        }
+        return box;
+      });
+      return updated;
+    });
+  }, [syncBoxToServer]);
 
   const addBox = useCallback(() => {
     setBoxes(prev => {
-      // Find the next available box number
       const existingNumbers = prev.map(b => b.boxNumber);
       let nextNumber = 1;
       while (existingNumbers.includes(nextNumber)) {
         nextNumber++;
       }
-      return [...prev, createNewBox(nextNumber)].sort((a, b) => a.boxNumber - b.boxNumber);
+      const newBox = createNewBox(nextNumber);
+      syncBoxToServer(newBox);
+      return [...prev, newBox].sort((a, b) => a.boxNumber - b.boxNumber);
     });
-  }, []);
+  }, [syncBoxToServer]);
 
   const addBoxWithNumber = useCallback((boxNumber: number) => {
     setBoxes(prev => {
-      // Check if box number already exists
       if (prev.some(b => b.boxNumber === boxNumber)) {
         return prev;
       }
-      return [...prev, createNewBox(boxNumber)].sort((a, b) => a.boxNumber - b.boxNumber);
+      const newBox = createNewBox(boxNumber);
+      syncBoxToServer(newBox);
+      return [...prev, newBox].sort((a, b) => a.boxNumber - b.boxNumber);
     });
-  }, []);
+  }, [syncBoxToServer]);
 
   const removeBox = useCallback((boxNumber: number) => {
     setBoxes(prev => prev.filter(box => box.boxNumber !== boxNumber));
-  }, []);
+    deleteBoxFromServer(boxNumber);
+  }, [deleteBoxFromServer]);
 
   // Extract game number, book number, and ticket number from barcode based on state
   const extractBarcodeInfo = useCallback((barcode: string, barcodeStateCode: StateCode): { gameNumber: string; bookNumber: string; ticketNumber: number } | null => {
     if (barcodeStateCode === 'DC') {
-      // Check if it's a dashed format: 1619-04147-7-017
       if (barcode.includes('-')) {
         const segments = barcode.split('-');
         if (segments.length >= 3) {
-          // Game number: first segment (e.g., "1619")
           const gameNumber = segments[0];
-          // Book number: second segment (e.g., "04147")
           const bookNumber = segments[1];
-          // Ticket number: last segment (e.g., "017")
           const ticketStr = segments[segments.length - 1];
           const ticketNumber = parseInt(ticketStr, 10);
           
@@ -253,13 +339,10 @@ export const useTicketStore = (stateCode: StateCode) => {
         return null;
       }
       
-      // Long numeric DC format: 1629030580016913270220
-      // Extract: first 4 digits = game number, next 5 digits = book number, next 3 digits = ticket number
-      // Minimum 12 digits required (4 + 5 + 3)
       if (/^\d{12,}$/.test(barcode)) {
-        const gameNumber = barcode.substring(0, 4);      // First 4 digits (e.g., "1629")
-        const bookNumber = barcode.substring(4, 9);      // Next 5 digits (e.g., "03058")
-        const ticketStr = barcode.substring(9, 12);      // Next 3 digits (e.g., "001")
+        const gameNumber = barcode.substring(0, 4);
+        const bookNumber = barcode.substring(4, 9);
+        const ticketStr = barcode.substring(9, 12);
         const ticketNumber = parseInt(ticketStr, 10);
         
         if (!isNaN(ticketNumber) && gameNumber && bookNumber) {
@@ -270,16 +353,12 @@ export const useTicketStore = (stateCode: StateCode) => {
       return null;
     }
     
-    // Maryland format: 20-digit numeric barcode
     if (!/^\d{20}$/.test(barcode)) {
       return null;
     }
     
-    // Game number: first 3 digits
     const gameNumber = barcode.substring(0, 3);
-    // Book number: digits 4-9 (6 digits)
     const bookNumber = barcode.substring(3, 9);
-    // Ticket number: middle 3 digits (positions 10-12, 0-indexed: 9-11)
     const ticketStr = barcode.substring(9, 12);
     const ticketNumber = parseInt(ticketStr, 10);
     
@@ -315,21 +394,16 @@ export const useTicketStore = (stateCode: StateCode) => {
     let remainingTicketsSold = 0;
     let remainingAmount = 0;
 
-    // Check if this is a new book for the same game in this box
     if (barcodeGameNumber && barcodeBookNumber) {
       if (box.gameNumber === barcodeGameNumber && box.bookNumber !== barcodeBookNumber) {
-        // Same game, different book - this is a book transition
         bookTransition = true;
         
-        // Calculate remaining tickets from previous book
         const lastTicket = box.lastScannedTicketNumber ?? box.startingTicketNumber;
-        remainingTicketsSold = lastTicket; // All remaining tickets are sold
+        remainingTicketsSold = lastTicket;
         remainingAmount = remainingTicketsSold * box.ticketPrice;
         
-        // Get game info from registry for the new book
         const gameInfo = gameRegistry.find(g => g.gameNumber === barcodeGameNumber);
         if (gameInfo) {
-          // Reset for new book
           updatedBox = {
             ...box,
             bookNumber: barcodeBookNumber,
@@ -340,7 +414,6 @@ export const useTicketStore = (stateCode: StateCode) => {
           };
         }
       } else if (box.gameNumber !== barcodeGameNumber) {
-        // Different game - need to check if it's in registry
         const gameInfo = gameRegistry.find(g => g.gameNumber === barcodeGameNumber);
         if (!gameInfo) {
           const error: ScanError = {
@@ -351,13 +424,11 @@ export const useTicketStore = (stateCode: StateCode) => {
           return { error };
         }
         
-        // Count remaining tickets from previous book as sold
         const lastTicket = box.lastScannedTicketNumber ?? box.startingTicketNumber;
         remainingTicketsSold = lastTicket;
         remainingAmount = remainingTicketsSold * box.ticketPrice;
         bookTransition = true;
         
-        // Switch to new game/book
         updatedBox = {
           ...box,
           gameNumber: barcodeGameNumber,
@@ -372,10 +443,8 @@ export const useTicketStore = (stateCode: StateCode) => {
       }
     }
 
-    // Get the reference number (either last scanned or starting number)
     const referenceNumber = updatedBox.lastScannedTicketNumber ?? updatedBox.startingTicketNumber;
 
-    // Check for duplicate scan
     if (updatedBox.lastScannedTicketNumber !== null && ticketNumber === updatedBox.lastScannedTicketNumber) {
       const error: ScanError = {
         type: 'duplicate_scan',
@@ -385,11 +454,9 @@ export const useTicketStore = (stateCode: StateCode) => {
       return { error };
     }
 
-    // Validate ticket sequence based on ticket order
     const isDescending = ticketOrder === 'descending';
     
     if (isDescending) {
-      // Descending: ticket numbers decrease (60, 59, 58...)
       if (ticketNumber > referenceNumber) {
         const error: ScanError = {
           type: 'invalid_sequence',
@@ -399,7 +466,6 @@ export const useTicketStore = (stateCode: StateCode) => {
         return { error };
       }
     } else {
-      // Ascending: ticket numbers increase (1, 2, 3...)
       if (ticketNumber < referenceNumber) {
         const error: ScanError = {
           type: 'invalid_sequence',
@@ -410,12 +476,10 @@ export const useTicketStore = (stateCode: StateCode) => {
       }
     }
 
-    // Calculate tickets sold in this scan based on order
     const ticketsSoldThisScan = isDescending 
       ? referenceNumber - ticketNumber 
       : ticketNumber - referenceNumber;
     
-    // Validate doesn't exceed book total
     const totalSoldAfterScan = updatedBox.ticketsSold + ticketsSoldThisScan;
     if (totalSoldAfterScan > updatedBox.totalTicketsPerBook && !bookTransition) {
       const error: ScanError = {
@@ -426,20 +490,23 @@ export const useTicketStore = (stateCode: StateCode) => {
       return { error };
     }
 
-    // Calculate amount
     const amountSold = ticketsSoldThisScan * updatedBox.ticketPrice;
 
-    // Update box
+    // Update box and sync to server
+    const finalBox = {
+      ...updatedBox,
+      lastScannedTicketNumber: ticketNumber,
+      ticketsSold: updatedBox.ticketsSold + ticketsSoldThisScan,
+      totalAmountSold: updatedBox.totalAmountSold + amountSold,
+    };
+
     setBoxes(prev => prev.map(b => 
-      b.boxNumber === selectedBoxNumber
-        ? {
-            ...updatedBox,
-            lastScannedTicketNumber: ticketNumber,
-            ticketsSold: updatedBox.ticketsSold + ticketsSoldThisScan,
-            totalAmountSold: updatedBox.totalAmountSold + amountSold,
-          }
-        : b
+      b.boxNumber === selectedBoxNumber ? finalBox : b
     ));
+
+    // Sync both box config and daily state
+    syncBoxToServer(finalBox);
+    syncDailyStateToServer(finalBox);
 
     const totalTicketsSold = ticketsSoldThisScan + remainingTicketsSold;
     const totalAmount = amountSold + remainingAmount;
@@ -466,10 +533,10 @@ export const useTicketStore = (stateCode: StateCode) => {
     };
 
     setLastScanResult(result);
-    setScanHistory(prev => [result, ...prev].slice(0, 50)); // Keep last 50 scans
+    setScanHistory(prev => [result, ...prev].slice(0, 50));
 
     return { result };
-  }, [boxes, gameRegistry]);
+  }, [boxes, gameRegistry, syncBoxToServer, syncDailyStateToServer]);
 
   const processBarcode = useCallback((
     barcode: string, 
@@ -515,21 +582,40 @@ export const useTicketStore = (stateCode: StateCode) => {
     return validateAndProcessTicket(ticketNumber, selectedBoxNumber, ticketOrder, true);
   }, [validateAndProcessTicket]);
 
-  const resetDailyCounts = useCallback(() => {
+  const resetDailyCounts = useCallback(async () => {
+    if (!user) return;
+
+    // Update boxes locally
     setBoxes(prev => prev.map(box => {
-      // If box has been scanned, update starting ticket number for next day
       const newStartingNumber = box.lastScannedTicketNumber ?? box.startingTicketNumber;
-      return {
+      const newBox = {
         ...box,
         ticketsSold: 0,
         totalAmountSold: 0,
         startingTicketNumber: newStartingNumber,
       };
+      // Sync box config to server (with updated starting number)
+      syncBoxToServer(newBox);
+      return newBox;
     }));
+
+    // Delete today's daily scanning state
+    const today = getTodayDateString();
+    try {
+      await supabase
+        .from('daily_scanning_state')
+        .delete()
+        .eq('user_id', user.id)
+        .eq('state_code', stateCode)
+        .eq('business_date', today);
+    } catch {
+      logErrorSecurely('resetDailyCounts');
+    }
+
     setScanHistory([]);
     setLastScanResult(null);
     setLastError(null);
-  }, []);
+  }, [user, stateCode, syncBoxToServer]);
 
   const getConfiguredBoxes = useCallback(() => {
     return boxes.filter(b => b.isConfigured);
@@ -546,12 +632,19 @@ export const useTicketStore = (stateCode: StateCode) => {
     };
   }, [boxes]);
 
+  // Refresh data from server (for manual refresh or after login)
+  const refreshFromServer = useCallback(() => {
+    return fetchDataFromServer();
+  }, [fetchDataFromServer]);
+
   return {
     boxes,
     gameRegistry,
     scanHistory,
     lastScanResult,
     lastError,
+    isLoading,
+    isSyncing,
     updateBox,
     addBox,
     addBoxWithNumber,
@@ -563,5 +656,6 @@ export const useTicketStore = (stateCode: StateCode) => {
     resetDailyCounts,
     getConfiguredBoxes,
     getTotals,
+    refreshFromServer,
   };
 };

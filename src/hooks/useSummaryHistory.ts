@@ -10,8 +10,13 @@ const getDayOfWeek = (date: Date): string => {
   return date.toLocaleDateString('en-US', { weekday: 'long' });
 };
 
-// State-specific localStorage key generator
-const getDailyStorageKey = (stateCode: StateCode) => `scratchoff-daily-data-${stateCode}`;
+const getTodayDateString = () => {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
 
 export const useSummaryHistory = (stateCode: StateCode) => {
   const { user } = useAuth();
@@ -108,22 +113,25 @@ export const useSummaryHistory = (stateCode: StateCode) => {
     
     // Queue saves to prevent concurrent execution (race condition prevention)
     const saveOperation = async (): Promise<{ success: boolean; message: string }> => {
-      // Get the actual business date from localStorage (the date when scanning started)
-      // This ensures we save under the correct date even if the calendar day has changed
+      // Get the business date from server's daily_scanning_state or fallback to today
       let businessDate: string;
       try {
-        const dailyStored = localStorage.getItem(getDailyStorageKey(stateCode));
-        if (dailyStored) {
-          const dailyData = JSON.parse(dailyStored);
-          businessDate = dailyData.date;
+        const { data: scanningState } = await supabase
+          .from('daily_scanning_state')
+          .select('business_date')
+          .eq('user_id', user.id)
+          .eq('state_code', stateCode)
+          .order('business_date', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (scanningState?.business_date) {
+          businessDate = scanningState.business_date;
         } else {
-          // Fallback to current date if no stored date exists
-          const now = new Date();
-          businessDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+          businessDate = getTodayDateString();
         }
       } catch {
-        const now = new Date();
-        businessDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+        businessDate = getTodayDateString();
       }
 
       const businessDateObj = new Date(businessDate + 'T12:00:00'); // Use noon to avoid timezone issues

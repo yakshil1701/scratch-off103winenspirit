@@ -5,15 +5,17 @@ import { AddBookDialog } from '@/components/AddBookDialog';
 import { StoreSettingsCard } from '@/components/StoreSettingsCard';
 import { useTicketStore } from '@/hooks/useTicketStore';
 import { useStoreSettings } from '@/hooks/useStoreSettings';
-import { Package, Plus, BookOpen } from 'lucide-react';
+import { Package, Plus, BookOpen, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 const BoxSetup = () => {
-  const { settings, updateStateCode, updateTicketOrder } = useStoreSettings();
-  const { boxes, updateBox, addBox, addBoxWithNumber, addBookToBox, removeBox, gameRegistry } = useTicketStore(settings.stateCode);
+  const { settings, isLoading: settingsLoading, updateStateCode, updateTicketOrder } = useStoreSettings();
+  const { boxes, updateBox, addBox, addBoxWithNumber, addBookToBox, removeBox, gameRegistry, isLoading: ticketStoreLoading } = useTicketStore(settings.stateCode);
   const configuredCount = boxes.filter(b => b.isConfigured).length;
   const [isAddBookDialogOpen, setIsAddBookDialogOpen] = useState(false);
   const [selectedBoxForBook, setSelectedBoxForBook] = useState<number | null>(null);
+  
+  const isLoading = settingsLoading || ticketStoreLoading;
 
   const handleAddBox = () => {
     addBox();
@@ -51,6 +53,19 @@ const BoxSetup = () => {
 
   // Check if settings can be changed (only when no sales data)
   const hasAnySales = boxes.some(b => b.ticketsSold > 0);
+
+  if (isLoading) {
+    return (
+      <Layout>
+        <div className="flex items-center justify-center min-h-[400px]">
+          <div className="flex flex-col items-center gap-4">
+            <Loader2 className="w-10 h-10 text-primary animate-spin" />
+            <p className="text-muted-foreground">Loading data...</p>
+          </div>
+        </div>
+      </Layout>
+    );
+  }
 
   return (
     <Layout>
