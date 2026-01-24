@@ -148,14 +148,14 @@ export const AuthModal = ({ isOpen }: AuthModalProps) => {
               <div className="space-y-2">
                 <Label htmlFor="signin-email">Email</Label>
                 <div className="relative">
-                  <Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
                   <Input
                     id="signin-email"
                     type="email"
                     placeholder="you@example.com"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    className="pl-10"
+                    className="pl-12"
                     required
                   />
                 </div>
@@ -164,20 +164,20 @@ export const AuthModal = ({ isOpen }: AuthModalProps) => {
               <div className="space-y-2">
                 <Label htmlFor="signin-password">Password</Label>
                 <div className="relative">
-                  <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
                   <Input
                     id="signin-password"
                     type={showPassword ? 'text' : 'password'}
                     placeholder="••••••••"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className="pl-10 pr-10"
+                    className="pl-12 pr-12"
                     required
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-3 text-muted-foreground hover:text-foreground"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
                   >
                     {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
@@ -204,14 +204,14 @@ export const AuthModal = ({ isOpen }: AuthModalProps) => {
               <div className="space-y-2">
                 <Label htmlFor="signup-email">Email</Label>
                 <div className="relative">
-                  <Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
                   <Input
                     id="signup-email"
                     type="email"
                     placeholder="you@example.com"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    className="pl-10"
+                    className="pl-12"
                     required
                   />
                 </div>
@@ -220,21 +220,21 @@ export const AuthModal = ({ isOpen }: AuthModalProps) => {
               <div className="space-y-2">
                 <Label htmlFor="signup-password">Password</Label>
                 <div className="relative">
-                  <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
                   <Input
                     id="signup-password"
                     type={showPassword ? 'text' : 'password'}
                     placeholder="••••••••"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className="pl-10 pr-10"
+                    className="pl-12 pr-12"
                     required
                     minLength={6}
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-3 text-muted-foreground hover:text-foreground"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
                   >
                     {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
@@ -244,14 +244,14 @@ export const AuthModal = ({ isOpen }: AuthModalProps) => {
               <div className="space-y-2">
                 <Label htmlFor="signup-confirm">Confirm Password</Label>
                 <div className="relative">
-                  <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
                   <Input
                     id="signup-confirm"
                     type={showPassword ? 'text' : 'password'}
                     placeholder="••••••••"
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
-                    className="pl-10"
+                    className="pl-12"
                     required
                     minLength={6}
                   />
@@ -274,14 +274,14 @@ export const AuthModal = ({ isOpen }: AuthModalProps) => {
               <div className="space-y-2">
                 <Label htmlFor="forgot-email">Email</Label>
                 <div className="relative">
-                  <Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
                   <Input
                     id="forgot-email"
                     type="email"
                     placeholder="you@example.com"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    className="pl-10"
+                    className="pl-12"
                     required
                   />
                 </div>
