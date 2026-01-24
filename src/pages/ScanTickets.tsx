@@ -7,7 +7,7 @@ import { ScanHistory } from '@/components/ScanHistory';
 import { StoreSettingsCard } from '@/components/StoreSettingsCard';
 import { useTicketStore } from '@/hooks/useTicketStore';
 import { useStoreSettings } from '@/hooks/useStoreSettings';
-import { DollarSign, Ticket, Edit3 } from 'lucide-react';
+import { DollarSign, Ticket, Edit3, Loader2 } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
@@ -22,13 +22,15 @@ import {
 } from '@/components/ui/dialog';
 
 const ScanTickets = () => {
-  const { settings, updateStateCode, updateTicketOrder } = useStoreSettings();
-  const { boxes, processBarcode, processManualEntry, scanHistory, lastScanResult, lastError, getTotals } = useTicketStore(settings.stateCode);
+  const { settings, isLoading: settingsLoading, updateStateCode, updateTicketOrder } = useStoreSettings();
+  const { boxes, processBarcode, processManualEntry, scanHistory, lastScanResult, lastError, getTotals, isLoading: ticketStoreLoading } = useTicketStore(settings.stateCode);
   const [selectedBox, setSelectedBox] = useState<number | null>(null);
   const [autoAdvance, setAutoAdvance] = useState(false);
   const [manualEntryOpen, setManualEntryOpen] = useState(false);
   const [manualTicketNumber, setManualTicketNumber] = useState('');
   const totals = getTotals();
+  
+  const isLoading = settingsLoading || ticketStoreLoading;
 
   const configuredBoxes = boxes.filter(b => b.isConfigured).sort((a, b) => a.boxNumber - b.boxNumber);
 
@@ -78,6 +80,19 @@ const ScanTickets = () => {
 
   // Check if settings can be changed (only when no sales data)
   const hasAnySales = boxes.some(b => b.ticketsSold > 0);
+
+  if (isLoading) {
+    return (
+      <Layout>
+        <div className="flex items-center justify-center min-h-[400px]">
+          <div className="flex flex-col items-center gap-4">
+            <Loader2 className="w-10 h-10 text-primary animate-spin" />
+            <p className="text-muted-foreground">Loading data...</p>
+          </div>
+        </div>
+      </Layout>
+    );
+  }
 
   return (
     <Layout>

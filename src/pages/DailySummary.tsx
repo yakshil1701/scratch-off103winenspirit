@@ -19,12 +19,12 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
-import { RefreshCw, Download, DollarSign, Ticket, Package, History } from 'lucide-react';
+import { RefreshCw, Download, DollarSign, Ticket, Package, History, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 const DailySummary = () => {
-  const { settings } = useStoreSettings();
-  const { boxes, resetDailyCounts, getTotals } = useTicketStore(settings.stateCode);
+  const { settings, isLoading: settingsLoading } = useStoreSettings();
+  const { boxes, resetDailyCounts, getTotals, isLoading: ticketStoreLoading } = useTicketStore(settings.stateCode);
   const {
     historicalSummaries,
     selectedHistoricalData,
@@ -46,6 +46,8 @@ const DailySummary = () => {
   const [isExporting, setIsExporting] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  
+  const isPageLoading = settingsLoading || ticketStoreLoading;
 
   // Fetch history list on mount and when state changes
   useEffect(() => {
@@ -156,6 +158,19 @@ const DailySummary = () => {
         activeBoxes: selectedHistoricalData.summary.active_boxes,
       }
     : totals;
+
+  if (isPageLoading) {
+    return (
+      <Layout>
+        <div className="flex items-center justify-center min-h-[400px]">
+          <div className="flex flex-col items-center gap-4">
+            <Loader2 className="w-10 h-10 text-primary animate-spin" />
+            <p className="text-muted-foreground">Loading data...</p>
+          </div>
+        </div>
+      </Layout>
+    );
+  }
 
   return (
     <Layout>
