@@ -1,22 +1,36 @@
 import { useState } from 'react';
-import { ChevronDown, ChevronRight, BookOpen, Pencil, Check, X } from 'lucide-react';
+import { ChevronDown, ChevronRight, BookOpen, Pencil, Check, X, Trash2 } from 'lucide-react';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { GameInfo } from '@/types/ticket';
 import { cn } from '@/lib/utils';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 
 interface KnownGamesSectionProps {
   gameRegistry: GameInfo[];
   onUpdateGame: (gameNumber: string, updates: { ticketPrice: number; totalTicketsPerBook: number }) => void;
+  onDeleteGame: (gameNumber: string) => void;
 }
 
 interface EditableGameProps {
   game: GameInfo;
   onSave: (gameNumber: string, updates: { ticketPrice: number; totalTicketsPerBook: number }) => void;
+  onDelete: (gameNumber: string) => void;
+  isDeleting: boolean;
 }
 
-const EditableGame = ({ game, onSave }: EditableGameProps) => {
+const EditableGame = ({ game, onSave, onDelete, isDeleting }: EditableGameProps) => {
   const [isEditing, setIsEditing] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
   const [price, setPrice] = useState(game.ticketPrice.toString());
@@ -48,7 +62,10 @@ const EditableGame = ({ game, onSave }: EditableGameProps) => {
 
   if (isEditing) {
     return (
-      <div className="bg-card border border-border rounded-lg px-3 py-2 text-sm flex items-center gap-2 animate-fade-in">
+      <div className={cn(
+        "bg-card border border-border rounded-lg px-3 py-2 text-sm flex items-center gap-2 animate-fade-in",
+        isDeleting && "animate-fade-out opacity-0 scale-95 transition-all duration-300"
+      )}>
         <span className="font-semibold text-primary">#{game.gameNumber}</span>
         <div className="flex items-center gap-1">
           <span className="text-muted-foreground">$</span>
@@ -98,27 +115,73 @@ const EditableGame = ({ game, onSave }: EditableGameProps) => {
   return (
     <div
       className={cn(
-        "bg-background border border-transparent rounded-lg px-3 py-1.5 text-sm transition-all cursor-pointer group",
-        isHovered && "border-primary/30 bg-primary/5"
+        "bg-background border border-transparent rounded-lg px-3 py-1.5 text-sm transition-all group relative",
+        isHovered && "border-primary/30 bg-primary/5",
+        isDeleting && "animate-fade-out opacity-0 scale-95 transition-all duration-300"
       )}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
-      onClick={() => setIsEditing(true)}
     >
       <span className="font-semibold">#{game.gameNumber}</span>
       <span className="text-muted-foreground ml-2">${game.ticketPrice} • {game.totalTicketsPerBook} tickets</span>
-      <Pencil 
-        className={cn(
-          "w-3 h-3 inline-block ml-2 transition-opacity",
-          isHovered ? "opacity-100 text-primary" : "opacity-0"
-        )} 
-      />
+      
+      <div className={cn(
+        "inline-flex items-center gap-1 ml-2 transition-opacity",
+        isHovered ? "opacity-100" : "opacity-0"
+      )}>
+        <button
+          onClick={() => setIsEditing(true)}
+          className="p-0.5 rounded hover:bg-primary/10 transition-colors"
+          title="Edit game"
+        >
+          <Pencil className="w-3 h-3 text-primary" />
+        </button>
+        
+        <AlertDialog>
+          <AlertDialogTrigger asChild>
+            <button
+              className="p-0.5 rounded hover:bg-destructive/10 transition-colors"
+              title="Delete game"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <Trash2 className="w-3 h-3 text-destructive" />
+            </button>
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete Game #{game.gameNumber}?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This will permanently remove this game from your registry. Any boxes currently using this game will need to be reconfigured.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={() => onDelete(game.gameNumber)}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                Delete
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </div>
     </div>
   );
 };
 
-export const KnownGamesSection = ({ gameRegistry, onUpdateGame }: KnownGamesSectionProps) => {
+export const KnownGamesSection = ({ gameRegistry, onUpdateGame, onDeleteGame }: KnownGamesSectionProps) => {
   const [isOpen, setIsOpen] = useState(false);
+  const [deletingGameNumber, setDeletingGameNumber] = useState<string | null>(null);
+
+  const handleDelete = (gameNumber: string) => {
+    setDeletingGameNumber(gameNumber);
+    // Wait for animation to complete before actually deleting
+    setTimeout(() => {
+      onDeleteGame(gameNumber);
+      setDeletingGameNumber(null);
+    }, 300);
+  };
 
   if (gameRegistry.length === 0) {
     return null;
@@ -156,11 +219,13 @@ export const KnownGamesSection = ({ gameRegistry, onUpdateGame }: KnownGamesSect
                   key={game.gameNumber}
                   game={game}
                   onSave={onUpdateGame}
+                  onDelete={handleDelete}
+                  isDeleting={deletingGameNumber === game.gameNumber}
                 />
               ))}
             </div>
             <p className="text-xs text-muted-foreground mt-3">
-              Click on any game to edit its price or ticket count.
+              Hover over any game to edit or delete it.
             </p>
           </div>
         </CollapsibleContent>
