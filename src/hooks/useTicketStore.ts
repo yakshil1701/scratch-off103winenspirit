@@ -257,6 +257,26 @@ export const useTicketStore = (stateCode: StateCode) => {
     });
   }, [syncGameToServer]);
 
+  // Delete a game from the registry
+  const deleteGame = useCallback(async (gameNumber: string) => {
+    if (!user) return;
+
+    try {
+      const { error } = await supabase
+        .from('game_registry')
+        .delete()
+        .eq('user_id', user.id)
+        .eq('state_code', stateCode)
+        .eq('game_number', gameNumber);
+
+      if (error) throw error;
+
+      setGameRegistry(prev => prev.filter(game => game.gameNumber !== gameNumber));
+    } catch {
+      logErrorSecurely('deleteGame');
+    }
+  }, [user, stateCode]);
+
   // Add a book to a box (configures the box with game info)
   const addBookToBox = useCallback((
     boxNumber: number,
@@ -662,6 +682,7 @@ export const useTicketStore = (stateCode: StateCode) => {
     isSyncing,
     updateBox,
     updateGame,
+    deleteGame,
     addBox,
     addBoxWithNumber,
     addBookToBox,

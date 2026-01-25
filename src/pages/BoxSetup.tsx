@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/button';
 
 const BoxSetup = () => {
   const { settings, isLoading: settingsLoading, updateStateCode, updateTicketOrder } = useStoreSettings();
-  const { boxes, updateBox, updateGame, addBox, addBoxWithNumber, addBookToBox, removeBox, gameRegistry, isLoading: ticketStoreLoading } = useTicketStore(settings.stateCode);
+  const { boxes, updateBox, updateGame, deleteGame, addBox, addBoxWithNumber, addBookToBox, removeBox, gameRegistry, isLoading: ticketStoreLoading } = useTicketStore(settings.stateCode);
   const configuredCount = boxes.filter(b => b.isConfigured).length;
   const [isAddBookDialogOpen, setIsAddBookDialogOpen] = useState(false);
   const [selectedBoxForBook, setSelectedBoxForBook] = useState<number | null>(null);
@@ -112,6 +112,7 @@ const BoxSetup = () => {
         <KnownGamesSection 
           gameRegistry={gameRegistry} 
           onUpdateGame={updateGame}
+          onDeleteGame={deleteGame}
         />
 
         {/* Empty State */}
