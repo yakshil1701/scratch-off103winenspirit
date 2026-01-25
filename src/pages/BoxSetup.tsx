@@ -3,6 +3,7 @@ import { Layout } from '@/components/Layout';
 import { BoxSetupCard } from '@/components/BoxSetupCard';
 import { AddBookDialog } from '@/components/AddBookDialog';
 import { StoreSettingsCard } from '@/components/StoreSettingsCard';
+import { KnownGamesSection } from '@/components/KnownGamesSection';
 import { useTicketStore } from '@/hooks/useTicketStore';
 import { useStoreSettings } from '@/hooks/useStoreSettings';
 import { Package, Plus, BookOpen, Loader2 } from 'lucide-react';
@@ -10,7 +11,7 @@ import { Button } from '@/components/ui/button';
 
 const BoxSetup = () => {
   const { settings, isLoading: settingsLoading, updateStateCode, updateTicketOrder } = useStoreSettings();
-  const { boxes, updateBox, addBox, addBoxWithNumber, addBookToBox, removeBox, gameRegistry, isLoading: ticketStoreLoading } = useTicketStore(settings.stateCode);
+  const { boxes, updateBox, updateGame, addBox, addBoxWithNumber, addBookToBox, removeBox, gameRegistry, isLoading: ticketStoreLoading } = useTicketStore(settings.stateCode);
   const configuredCount = boxes.filter(b => b.isConfigured).length;
   const [isAddBookDialogOpen, setIsAddBookDialogOpen] = useState(false);
   const [selectedBoxForBook, setSelectedBoxForBook] = useState<number | null>(null);
@@ -107,23 +108,11 @@ const BoxSetup = () => {
           </div>
         </div>
 
-        {/* Game Registry Info */}
-        {gameRegistry.length > 0 && (
-          <div className="bg-muted/30 rounded-xl p-4">
-            <div className="flex items-center gap-2 mb-2">
-              <BookOpen className="w-4 h-4 text-muted-foreground" />
-              <span className="text-sm font-medium text-muted-foreground">Known Games</span>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {gameRegistry.map(game => (
-                <div key={game.gameNumber} className="bg-background rounded-lg px-3 py-1.5 text-sm">
-                  <span className="font-semibold">#{game.gameNumber}</span>
-                  <span className="text-muted-foreground ml-2">${game.ticketPrice} • {game.totalTicketsPerBook} tickets</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
+        {/* Known Games Section - Collapsible */}
+        <KnownGamesSection 
+          gameRegistry={gameRegistry} 
+          onUpdateGame={updateGame}
+        />
 
         {/* Empty State */}
         {boxes.length === 0 && (
