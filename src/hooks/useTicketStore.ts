@@ -242,6 +242,21 @@ export const useTicketStore = (stateCode: StateCode) => {
     });
   }, [syncGameToServer]);
 
+  // Update an existing game in the registry
+  const updateGame = useCallback((gameNumber: string, updates: { ticketPrice: number; totalTicketsPerBook: number }) => {
+    setGameRegistry(prev => {
+      const updated = prev.map(game => {
+        if (game.gameNumber === gameNumber) {
+          const updatedGame = { ...game, ...updates };
+          syncGameToServer(updatedGame);
+          return updatedGame;
+        }
+        return game;
+      });
+      return updated;
+    });
+  }, [syncGameToServer]);
+
   // Add a book to a box (configures the box with game info)
   const addBookToBox = useCallback((
     boxNumber: number,
@@ -646,6 +661,7 @@ export const useTicketStore = (stateCode: StateCode) => {
     isLoading,
     isSyncing,
     updateBox,
+    updateGame,
     addBox,
     addBoxWithNumber,
     addBookToBox,
