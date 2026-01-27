@@ -617,12 +617,18 @@ export const useTicketStore = (stateCode: StateCode) => {
     return validateAndProcessTicket(ticketNumber, selectedBoxNumber, ticketOrder, true);
   }, [validateAndProcessTicket]);
 
-  const resetDailyCounts = useCallback(async () => {
+  // preserveStartingPosition: true = update starting number to last scanned (for Reset & Save)
+  //                           false = keep original starting number (for Reset Without Saving)
+  const resetDailyCounts = useCallback(async (preserveStartingPosition: boolean = true) => {
     if (!user) return;
 
     // Update boxes locally - clear lastScannedTicketNumber to allow re-scanning
     setBoxes(prev => prev.map(box => {
-      const newStartingNumber = box.lastScannedTicketNumber ?? box.startingTicketNumber;
+      // Only update starting number if preserving position AND there was a scanned ticket
+      const newStartingNumber = preserveStartingPosition && box.lastScannedTicketNumber !== null
+        ? box.lastScannedTicketNumber 
+        : box.startingTicketNumber;
+      
       const newBox = {
         ...box,
         ticketsSold: 0,

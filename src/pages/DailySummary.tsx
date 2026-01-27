@@ -114,7 +114,8 @@ const DailySummary = () => {
     // Save today's summary to history before resetting
     const result = await saveDailySummary(boxes);
     if (result.success) {
-      resetDailyCounts();
+      // Preserve starting position when saving (tickets resume from last scanned)
+      resetDailyCounts(true);
       fetchSummaryList(); // Refresh history list
       toast.success('Day reset successfully. Summary saved to history.');
     } else {
@@ -123,7 +124,8 @@ const DailySummary = () => {
   };
 
   const handleResetWithoutSaving = () => {
-    resetDailyCounts();
+    // Don't preserve starting position - allow re-scanning same tickets
+    resetDailyCounts(false);
     toast.success('Day reset successfully. No summary was saved.');
   };
 
