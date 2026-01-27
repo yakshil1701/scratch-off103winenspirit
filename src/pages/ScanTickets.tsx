@@ -7,11 +7,12 @@ import { ScanHistory } from '@/components/ScanHistory';
 import { StoreSettingsCard } from '@/components/StoreSettingsCard';
 import { useTicketStore } from '@/hooks/useTicketStore';
 import { useStoreSettings } from '@/hooks/useStoreSettings';
-import { DollarSign, Ticket, Edit3, Loader2 } from 'lucide-react';
+import { DollarSign, Ticket, Edit3, Loader2, Undo2 } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { toast } from 'sonner';
 import {
   Dialog,
   DialogContent,
@@ -23,7 +24,7 @@ import {
 
 const ScanTickets = () => {
   const { settings, isLoading: settingsLoading, updateStateCode, updateTicketOrder } = useStoreSettings();
-  const { boxes, processBarcode, processManualEntry, scanHistory, lastScanResult, lastError, getTotals, isLoading: ticketStoreLoading } = useTicketStore(settings.stateCode);
+  const { boxes, processBarcode, processManualEntry, scanHistory, lastScanResult, lastError, getTotals, isLoading: ticketStoreLoading, undoLastScan, canUndoScan } = useTicketStore(settings.stateCode);
   const [selectedBox, setSelectedBox] = useState<number | null>(null);
   const [autoAdvance, setAutoAdvance] = useState(false);
   const [manualEntryOpen, setManualEntryOpen] = useState(false);
@@ -77,6 +78,18 @@ const ScanTickets = () => {
   };
 
   const selectedBoxData = boxes.find(b => b.boxNumber === selectedBox);
+
+  // Check if undo is available for the selected box
+  const canUndo = selectedBox !== null && canUndoScan(selectedBox);
+
+  const handleUndo = () => {
+    if (selectedBox !== null) {
+      const success = undoLastScan(selectedBox);
+      if (success) {
+        toast.success(`Last scan for Box ${selectedBox} has been undone`);
+      }
+    }
+  };
 
   // Check if settings can be changed (only when no sales data)
   const hasAnySales = boxes.some(b => b.ticketsSold > 0);
@@ -177,15 +190,28 @@ const ScanTickets = () => {
               Barcode Scanner Input
             </label>
             {selectedBox !== null && selectedBoxData && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setManualEntryOpen(true)}
-                className="gap-2"
-              >
-                <Edit3 className="w-4 h-4" />
-                Manual Entry
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleUndo}
+                  disabled={!canUndo}
+                  className="gap-2"
+                  title={canUndo ? "Undo last scan for this box" : "No scan to undo"}
+                >
+                  <Undo2 className="w-4 h-4" />
+                  Undo
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setManualEntryOpen(true)}
+                  className="gap-2"
+                >
+                  <Edit3 className="w-4 h-4" />
+                  Manual Entry
+                </Button>
+              </div>
             )}
           </div>
           <ScanInput

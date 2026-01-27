@@ -27,6 +27,13 @@ const createNewBox = (boxNumber: number): TicketBox => ({
   bookNumber: null,
 });
 
+// Type for undo state - stores the box state before the last scan
+interface UndoState {
+  boxNumber: number;
+  previousBox: TicketBox;
+  scanResult: ScanResult;
+}
+
 export const useTicketStore = (stateCode: StateCode) => {
   const { user } = useAuth();
   const [boxes, setBoxes] = useState<TicketBox[]>([]);
@@ -36,6 +43,9 @@ export const useTicketStore = (stateCode: StateCode) => {
   const [lastError, setLastError] = useState<ScanError | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
+  
+  // Undo state - tracks the previous state for each box (keyed by box number)
+  const [undoStateMap, setUndoStateMap] = useState<Map<number, UndoState>>(new Map());
   
   // Debounce refs for syncing
   const boxSyncTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -547,6 +557,9 @@ export const useTicketStore = (stateCode: StateCode) => {
       totalAmountSold: updatedBox.totalAmountSold + amountSold,
     };
 
+    // Save the original box state for undo (before this scan was applied)
+    const originalBox = { ...box };
+
     setBoxes(prev => prev.map(b => 
       b.boxNumber === selectedBoxNumber ? finalBox : b
     ));
@@ -582,8 +595,19 @@ export const useTicketStore = (stateCode: StateCode) => {
     setLastScanResult(result);
     setScanHistory(prev => [result, ...prev].slice(0, 50));
 
+    // Save undo state for this box (stores original state before this scan)
+    setUndoStateMap(prev => {
+      const newMap = new Map(prev);
+      newMap.set(selectedBoxNumber, {
+        boxNumber: selectedBoxNumber,
+        previousBox: originalBox,
+        scanResult: result,
+      });
+      return newMap;
+    });
+
     return { result };
-  }, [boxes, gameRegistry, syncBoxToServer, syncDailyStateToServer]);
+  }, [boxes, gameRegistry, normalizeBookNumber, syncBoxToServer, syncDailyStateToServer]);
 
   const processBarcode = useCallback((
     barcode: string, 
@@ -669,7 +693,53 @@ export const useTicketStore = (stateCode: StateCode) => {
     setScanHistory([]);
     setLastScanResult(null);
     setLastError(null);
+    // Clear undo state on reset
+    setUndoStateMap(new Map());
   }, [user, stateCode, syncBoxToServer]);
+
+  // Undo the last scan for a specific box
+  const undoLastScan = useCallback((boxNumber: number): boolean => {
+    const undoState = undoStateMap.get(boxNumber);
+    
+    if (!undoState) {
+      return false; // No undo available for this box
+    }
+
+    // Restore the previous box state
+    const previousBox = undoState.previousBox;
+    
+    setBoxes(prev => prev.map(b => 
+      b.boxNumber === boxNumber ? previousBox : b
+    ));
+
+    // Sync the restored state to server
+    syncBoxToServer(previousBox);
+    syncDailyStateToServer(previousBox);
+
+    // Remove the scan from history
+    setScanHistory(prev => prev.filter(scan => 
+      !(scan.boxNumber === boxNumber && scan.timestamp.getTime() === undoState.scanResult.timestamp.getTime())
+    ));
+
+    // Clear the last scan result if it was from this box
+    if (lastScanResult?.boxNumber === boxNumber) {
+      setLastScanResult(null);
+    }
+
+    // Remove undo state for this box (can only undo once per scan)
+    setUndoStateMap(prev => {
+      const newMap = new Map(prev);
+      newMap.delete(boxNumber);
+      return newMap;
+    });
+
+    return true;
+  }, [undoStateMap, lastScanResult, syncBoxToServer, syncDailyStateToServer]);
+
+  // Check if undo is available for a specific box
+  const canUndoScan = useCallback((boxNumber: number): boolean => {
+    return undoStateMap.has(boxNumber);
+  }, [undoStateMap]);
 
   const getConfiguredBoxes = useCallback(() => {
     return boxes.filter(b => b.isConfigured);
@@ -713,5 +783,7 @@ export const useTicketStore = (stateCode: StateCode) => {
     getConfiguredBoxes,
     getTotals,
     refreshFromServer,
+    undoLastScan,
+    canUndoScan,
   };
 };
