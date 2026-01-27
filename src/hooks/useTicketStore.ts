@@ -620,7 +620,7 @@ export const useTicketStore = (stateCode: StateCode) => {
   const resetDailyCounts = useCallback(async () => {
     if (!user) return;
 
-    // Update boxes locally
+    // Update boxes locally - clear lastScannedTicketNumber to allow re-scanning
     setBoxes(prev => prev.map(box => {
       const newStartingNumber = box.lastScannedTicketNumber ?? box.startingTicketNumber;
       const newBox = {
@@ -628,8 +628,9 @@ export const useTicketStore = (stateCode: StateCode) => {
         ticketsSold: 0,
         totalAmountSold: 0,
         startingTicketNumber: newStartingNumber,
+        lastScannedTicketNumber: null, // Clear to allow re-scanning after reset
       };
-      // Sync box config to server (with updated starting number)
+      // Sync box config to server (with updated starting number and cleared last scanned)
       syncBoxToServer(newBox);
       return newBox;
     }));
