@@ -103,6 +103,11 @@ export const AddBookDialog = ({
     onOpenChange(false);
   };
 
+  // Normalize book number by removing leading zeros for consistent comparison
+  const normalizeBookNumber = (bookNumber: string): string => {
+    return bookNumber.replace(/^0+/, '') || '0';
+  };
+
   // Extract game number and book number from barcode based on state
   const extractFromBarcode = (barcode: string) => {
     if (stateCode === 'DC') {
@@ -111,7 +116,8 @@ export const AddBookDialog = ({
         const segments = barcode.split('-');
         if (segments.length >= 3) {
           const game = segments[0];
-          const book = segments[1];
+          // Normalize book number for DC to handle leading zeros consistently
+          const book = normalizeBookNumber(segments[1]);
           return { gameNumber: game, bookNumber: book };
         }
         return null;
@@ -121,7 +127,8 @@ export const AddBookDialog = ({
       // First 4 digits = game number, next 5 digits = book number
       if (/^\d{12,}$/.test(barcode)) {
         const game = barcode.substring(0, 4);
-        const book = barcode.substring(4, 9);
+        // Normalize book number for DC to handle leading zeros consistently
+        const book = normalizeBookNumber(barcode.substring(4, 9));
         return { gameNumber: game, bookNumber: book };
       }
       

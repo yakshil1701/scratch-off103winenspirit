@@ -356,6 +356,12 @@ export const useTicketStore = (stateCode: StateCode) => {
     deleteBoxFromServer(boxNumber);
   }, [deleteBoxFromServer]);
 
+  // Normalize book number by removing leading zeros for consistent comparison
+  const normalizeBookNumber = useCallback((bookNumber: string): string => {
+    // Remove leading zeros but keep at least one digit
+    return bookNumber.replace(/^0+/, '') || '0';
+  }, []);
+
   // Extract game number, book number, and ticket number from barcode based on state
   const extractBarcodeInfo = useCallback((barcode: string, barcodeStateCode: StateCode): { gameNumber: string; bookNumber: string; ticketNumber: number } | null => {
     if (barcodeStateCode === 'DC') {
@@ -363,7 +369,8 @@ export const useTicketStore = (stateCode: StateCode) => {
         const segments = barcode.split('-');
         if (segments.length >= 3) {
           const gameNumber = segments[0];
-          const bookNumber = segments[1];
+          // Normalize book number for DC to handle leading zeros consistently
+          const bookNumber = normalizeBookNumber(segments[1]);
           const ticketStr = segments[segments.length - 1];
           const ticketNumber = parseInt(ticketStr, 10);
           
@@ -376,7 +383,8 @@ export const useTicketStore = (stateCode: StateCode) => {
       
       if (/^\d{12,}$/.test(barcode)) {
         const gameNumber = barcode.substring(0, 4);
-        const bookNumber = barcode.substring(4, 9);
+        // Normalize book number for DC to handle leading zeros consistently
+        const bookNumber = normalizeBookNumber(barcode.substring(4, 9));
         const ticketStr = barcode.substring(9, 12);
         const ticketNumber = parseInt(ticketStr, 10);
         
@@ -398,7 +406,7 @@ export const useTicketStore = (stateCode: StateCode) => {
     const ticketNumber = parseInt(ticketStr, 10);
     
     return { gameNumber, bookNumber, ticketNumber };
-  }, []);
+  }, [normalizeBookNumber]);
 
   const extractTicketNumber = useCallback((barcode: string, barcodeStateCode: StateCode): number | null => {
     const info = extractBarcodeInfo(barcode, barcodeStateCode);
@@ -430,7 +438,11 @@ export const useTicketStore = (stateCode: StateCode) => {
     let remainingAmount = 0;
 
     if (barcodeGameNumber && barcodeBookNumber) {
-      if (box.gameNumber === barcodeGameNumber && box.bookNumber !== barcodeBookNumber) {
+      // Normalize stored book number for comparison (important for DC where book numbers may have leading zeros)
+      const normalizedStoredBookNumber = box.bookNumber ? normalizeBookNumber(box.bookNumber) : null;
+      const normalizedBarcodeBookNumber = normalizeBookNumber(barcodeBookNumber);
+      
+      if (box.gameNumber === barcodeGameNumber && normalizedStoredBookNumber !== normalizedBarcodeBookNumber) {
         bookTransition = true;
         
         const lastTicket = box.lastScannedTicketNumber ?? box.startingTicketNumber;
