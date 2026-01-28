@@ -502,7 +502,14 @@ export const useTicketStore = (stateCode: StateCode) => {
 
     const referenceNumber = updatedBox.lastScannedTicketNumber ?? updatedBox.startingTicketNumber;
 
-    if (updatedBox.lastScannedTicketNumber !== null && ticketNumber === updatedBox.lastScannedTicketNumber) {
+    // Only flag a duplicate when we have evidence this box has scanned sales *today*.
+    // This prevents false "already scanned" errors at the start of a fresh day where
+    // the last-scanned pointer may legitimately match the first ticket scanned (0 sold).
+    if (
+      updatedBox.lastScannedTicketNumber !== null &&
+      ticketNumber === updatedBox.lastScannedTicketNumber &&
+      box.ticketsSold > 0
+    ) {
       const error: ScanError = {
         type: 'duplicate_scan',
         message: `Ticket #${ticketNumber} was already scanned.`
