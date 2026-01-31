@@ -4,6 +4,7 @@ import { SummaryTable } from '@/components/SummaryTable';
 import { HistoricalSummaryTable } from '@/components/HistoricalSummaryTable';
 import { SummaryDateFilter } from '@/components/SummaryDateFilter';
 import { HistoricalBanner } from '@/components/HistoricalBanner';
+import { SalesAnalyticsChart } from '@/components/SalesAnalyticsChart';
 import { useTicketStore } from '@/hooks/useTicketStore';
 import { useSummaryHistory } from '@/hooks/useSummaryHistory';
 import { useStoreSettings } from '@/hooks/useStoreSettings';
@@ -305,6 +306,9 @@ const DailySummary = () => {
             </div>
           </div>
         </div>
+
+        {/* Sales Analytics Chart */}
+        <SalesAnalyticsChart summaries={historicalSummaries} />
 
         {/* Summary Table */}
         {isViewingHistory ? (
