@@ -224,12 +224,16 @@ export const AddBookDialog = ({
     (boxAssignment === 'existing' && selectedExistingBox) ||
     (boxAssignment === 'new' && isValidNewBoxNumber);
 
+  // Check if starting ticket is a valid number (including 0)
+  const startingTicketNum = startingTicket === '' ? NaN : parseInt(startingTicket);
+  const isValidStartingTicket = !isNaN(startingTicketNum) && startingTicketNum >= 0;
+
   const isValid = 
     gameNumber.length >= 1 && 
     bookNumber.length >= 1 && 
     parseFloat(ticketPrice) > 0 && 
     parseInt(totalTickets) > 0 &&
-    parseInt(startingTicket) >= 0 &&
+    isValidStartingTicket &&
     isValidBoxSelection;
 
   // Determine dialog title based on context
