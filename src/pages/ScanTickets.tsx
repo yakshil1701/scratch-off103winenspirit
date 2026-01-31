@@ -58,12 +58,26 @@ const ScanTickets = () => {
     }
   };
 
+  // Check if manual entry is valid:
+  // - "0" is allowed for end-of-day finalization
+  // - Otherwise, require minimum 4 characters for barcode format
+  const isValidManualEntry = manualTicketNumber === '0' || manualTicketNumber.length >= 4;
+
   const handleManualEntry = () => {
     if (selectedBox === null) return;
-    if (manualTicketNumber.length < 4) return;
+    if (!isValidManualEntry) return;
     
-    // Process manual entry exactly like a scanned barcode
-    const { result } = processBarcode(manualTicketNumber, selectedBox, settings.stateCode, settings.ticketOrder);
+    let result;
+    
+    // Special case: "0" means set ticket position to 0 (end-of-day finalization)
+    if (manualTicketNumber === '0') {
+      const manualResult = processManualEntry(0, selectedBox, settings.ticketOrder);
+      result = manualResult.result;
+    } else {
+      // Process as barcode for non-zero values
+      const barcodeResult = processBarcode(manualTicketNumber, selectedBox, settings.stateCode, settings.ticketOrder);
+      result = barcodeResult.result;
+    }
     
     // Auto-advance only on successful entry
     if (autoAdvance && result?.success) {
@@ -272,8 +286,8 @@ const ScanTickets = () => {
                 />
                 <p className="text-sm text-muted-foreground">
                   {settings.stateCode === 'DC' 
-                    ? 'Enter barcode in format: 1619-04147-7-017'
-                    : 'Enter the full barcode value (minimum 4 digits)'
+                    ? 'Enter barcode in format: 1619-04147-7-017, or enter "0" to finalize (no tickets remaining)'
+                    : 'Enter full barcode value (min 4 digits), or enter "0" to finalize (no tickets remaining)'
                   }
                 </p>
               </div>
@@ -282,7 +296,7 @@ const ScanTickets = () => {
               <Button variant="outline" onClick={() => setManualEntryOpen(false)}>
                 Cancel
               </Button>
-              <Button onClick={handleManualEntry} disabled={manualTicketNumber.length < 4}>
+              <Button onClick={handleManualEntry} disabled={!isValidManualEntry}>
                 Submit
               </Button>
             </DialogFooter>
