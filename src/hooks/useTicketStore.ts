@@ -373,14 +373,20 @@ export const useTicketStore = (stateCode: StateCode) => {
   }, []);
 
   // Extract game number, book number, and ticket number from barcode based on state
+  // DC format: Game (4 digits) + Book (5 digits) + Ticket (3 digits) + ignored extra digits
+  // Example: 1619041470175496507845 -> Game: 1619, Book: 04147, Ticket: 017, ignore: 5496507845
+  // Also supports dashed format: 1619-04147-7-017 -> Game: 1619, Book: 04147, Ticket: 017
   const extractBarcodeInfo = useCallback((barcode: string, barcodeStateCode: StateCode): { gameNumber: string; bookNumber: string; ticketNumber: number } | null => {
     if (barcodeStateCode === 'DC') {
+      // DC dashed format: 1619-04147-7-017
+      // Segments: [game, book, check?, ticket]
       if (barcode.includes('-')) {
         const segments = barcode.split('-');
         if (segments.length >= 3) {
-          const gameNumber = segments[0];
-          // Normalize book number for DC to handle leading zeros consistently
+          const gameNumber = segments[0]; // First segment is game number (4 digits)
+          // Second segment is book number (5 digits) - normalize to remove leading zeros
           const bookNumber = normalizeBookNumber(segments[1]);
+          // Last segment is ticket number
           const ticketStr = segments[segments.length - 1];
           const ticketNumber = parseInt(ticketStr, 10);
           
@@ -391,12 +397,18 @@ export const useTicketStore = (stateCode: StateCode) => {
         return null;
       }
       
+      // DC long numeric format: minimum 12 digits
+      // Format: GGGG (4) + BBBBB (5) + TTT (3) + extra digits (ignored)
+      // Example: 1619041470175496507845
+      //          1619 = game, 04147 = book, 017 = ticket, rest ignored
       if (/^\d{12,}$/.test(barcode)) {
-        const gameNumber = barcode.substring(0, 4);
-        // Normalize book number for DC to handle leading zeros consistently
-        const bookNumber = normalizeBookNumber(barcode.substring(4, 9));
-        const ticketStr = barcode.substring(9, 12);
+        const gameNumber = barcode.substring(0, 4);  // Positions 0-3: Game number (4 digits)
+        const rawBookNumber = barcode.substring(4, 9); // Positions 4-8: Book number (5 digits)
+        const bookNumber = normalizeBookNumber(rawBookNumber); // Normalize to remove leading zeros
+        const ticketStr = barcode.substring(9, 12);   // Positions 9-11: Ticket number (3 digits)
         const ticketNumber = parseInt(ticketStr, 10);
+        
+        // All remaining digits (position 12+) are ignored
         
         if (!isNaN(ticketNumber) && gameNumber && bookNumber) {
           return { gameNumber, bookNumber, ticketNumber };
@@ -406,6 +418,8 @@ export const useTicketStore = (stateCode: StateCode) => {
       return null;
     }
     
+    // Maryland format: exactly 20 digits
+    // Format: GGG (3) + BBBBBB (6) + TTT (3) + rest (8)
     if (!/^\d{20}$/.test(barcode)) {
       return null;
     }
