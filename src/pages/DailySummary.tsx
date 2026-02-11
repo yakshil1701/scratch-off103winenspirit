@@ -119,6 +119,10 @@ const DailySummary = () => {
       resetDailyCounts(true);
       fetchSummaryList(); // Refresh history list
       toast.success('Day reset successfully. Summary saved to history.');
+    } else if (result.message === 'No sales to save') {
+      // No sales data found - still reset but inform the user
+      resetDailyCounts(true);
+      toast.info('No sales to save. Day has been reset.');
     } else {
       toast.error('Failed to save summary before reset.');
     }
