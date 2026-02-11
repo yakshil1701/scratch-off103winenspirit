@@ -113,35 +113,61 @@ export const useSummaryHistory = (stateCode: StateCode) => {
     
     // Queue saves to prevent concurrent execution (race condition prevention)
     const saveOperation = async (): Promise<{ success: boolean; message: string }> => {
-      // Get the business date from server's daily_scanning_state or fallback to today
-      let businessDate: string;
+      // Use local date to avoid timezone issues
+      const todayDate = getTodayDateString();
+
+      // Fetch the latest daily_scanning_state from the server to get accurate counts
+      // This avoids stale data from the boxes parameter which may not reflect completed server syncs
+      let businessDate = todayDate;
+      let serverDailyCounts: Map<number, { ticketsSold: number; totalAmountSold: number }> = new Map();
+      
       try {
-        const { data: scanningState } = await supabase
+        const { data: scanningStates } = await supabase
           .from('daily_scanning_state')
-          .select('business_date')
+          .select('*')
           .eq('user_id', user.id)
           .eq('state_code', stateCode)
-          .order('business_date', { ascending: false })
-          .limit(1)
-          .maybeSingle();
+          .order('business_date', { ascending: false });
 
-        if (scanningState?.business_date) {
-          businessDate = scanningState.business_date;
-        } else {
-          businessDate = getTodayDateString();
+        if (scanningStates && scanningStates.length > 0) {
+          businessDate = scanningStates[0].business_date;
+          // Build a map of server-side daily counts for the business date
+          for (const state of scanningStates) {
+            if (state.business_date === businessDate) {
+              serverDailyCounts.set(state.box_number, {
+                ticketsSold: state.tickets_sold,
+                totalAmountSold: Number(state.total_amount_sold),
+              });
+            }
+          }
         }
       } catch {
-        businessDate = getTodayDateString();
+        // Fallback: use the passed boxes data
       }
 
       const businessDateObj = new Date(businessDate + 'T12:00:00'); // Use noon to avoid timezone issues
       const summaryDate = businessDate;
       const dayOfWeek = getDayOfWeek(businessDateObj);
 
-      const configuredBoxes = boxes.filter(b => b.isConfigured && b.ticketsSold > 0);
+      // Merge server-side daily counts with box configuration data for accuracy
+      // Use server counts when available (they reflect completed syncs), fall back to local boxes
+      const configuredBoxes = boxes
+        .filter(b => b.isConfigured)
+        .map(b => {
+          const serverCounts = serverDailyCounts.get(b.boxNumber);
+          if (serverCounts) {
+            return {
+              ...b,
+              ticketsSold: serverCounts.ticketsSold,
+              totalAmountSold: serverCounts.totalAmountSold,
+            };
+          }
+          return b;
+        })
+        .filter(b => b.ticketsSold > 0);
       
       if (configuredBoxes.length === 0) {
-        return { success: true, message: 'No sales to save' };
+        return { success: false, message: 'No sales to save' };
       }
 
       const totalTicketsSold = configuredBoxes.reduce((sum, b) => sum + b.ticketsSold, 0);
@@ -199,11 +225,28 @@ export const useSummaryHistory = (stateCode: StateCode) => {
         }
 
         // Insert box sales with state_code and user_id
+        // Fetch the latest box configs from server for accurate last_scanned_ticket_number
+        let serverBoxConfigs: Map<number, number | null> = new Map();
+        try {
+          const { data: boxConfigs } = await supabase
+            .from('box_configurations')
+            .select('box_number, last_scanned_ticket_number')
+            .eq('user_id', user.id)
+            .eq('state_code', stateCode);
+          if (boxConfigs) {
+            for (const config of boxConfigs) {
+              serverBoxConfigs.set(config.box_number, config.last_scanned_ticket_number);
+            }
+          }
+        } catch {
+          // Use local data as fallback
+        }
+
         const boxSalesData = configuredBoxes.map(box => ({
           summary_id: summaryId,
           box_number: box.boxNumber,
           ticket_price: box.ticketPrice,
-          last_scanned_ticket_number: box.lastScannedTicketNumber,
+          last_scanned_ticket_number: serverBoxConfigs.get(box.boxNumber) ?? box.lastScannedTicketNumber,
           tickets_sold: box.ticketsSold,
           total_amount_sold: box.totalAmountSold,
           state_code: stateCode,
