@@ -7,7 +7,7 @@ import { ScanHistory } from '@/components/ScanHistory';
 import { StoreSettingsCard } from '@/components/StoreSettingsCard';
 import { useTicketStore } from '@/hooks/useTicketStore';
 import { useStoreSettings } from '@/hooks/useStoreSettings';
-import { DollarSign, Ticket, Edit3, Loader2, Undo2 } from 'lucide-react';
+import { DollarSign, Ticket, Edit3, Loader2, Trash2 } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
@@ -21,13 +21,24 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 const ScanTickets = () => {
   const { settings, isLoading: settingsLoading, updateStateCode, updateTicketOrder } = useStoreSettings();
-  const { boxes, processBarcode, processManualEntry, scanHistory, lastScanResult, lastError, getTotals, isLoading: ticketStoreLoading, undoLastScan, canUndoScan } = useTicketStore(settings.stateCode);
+  const { boxes, processBarcode, processManualEntry, scanHistory, lastScanResult, lastError, getTotals, isLoading: ticketStoreLoading, resetDailyCounts } = useTicketStore(settings.stateCode);
   const [selectedBox, setSelectedBox] = useState<number | null>(null);
   const [autoAdvance, setAutoAdvance] = useState(false);
   const [manualEntryOpen, setManualEntryOpen] = useState(false);
+  const [clearScanOpen, setClearScanOpen] = useState(false);
   const [manualTicketNumber, setManualTicketNumber] = useState('');
   const totals = getTotals();
   
@@ -93,16 +104,10 @@ const ScanTickets = () => {
 
   const selectedBoxData = boxes.find(b => b.boxNumber === selectedBox);
 
-  // Check if undo is available for the selected box
-  const canUndo = selectedBox !== null && canUndoScan(selectedBox);
-
-  const handleUndo = () => {
-    if (selectedBox !== null) {
-      const success = undoLastScan(selectedBox);
-      if (success) {
-        toast.success(`Last scan for Box ${selectedBox} has been undone`);
-      }
-    }
+  const handleClearScan = () => {
+    resetDailyCounts(false);
+    setClearScanOpen(false);
+    toast.success('All scanned data has been cleared');
   };
 
   // Check if settings can be changed (only when no sales data)
@@ -206,15 +211,14 @@ const ScanTickets = () => {
             {selectedBox !== null && selectedBoxData && (
               <div className="flex items-center gap-2">
                 <Button
-                  variant="outline"
+                  variant="destructive"
                   size="sm"
-                  onClick={handleUndo}
-                  disabled={!canUndo}
+                  onClick={() => setClearScanOpen(true)}
+                  disabled={!hasAnySales}
                   className="gap-2"
-                  title={canUndo ? "Undo last scan for this box" : "No scan to undo"}
                 >
-                  <Undo2 className="w-4 h-4" />
-                  Undo
+                  <Trash2 className="w-4 h-4" />
+                  Clear Scan
                 </Button>
                 <Button
                   variant="outline"
@@ -302,6 +306,23 @@ const ScanTickets = () => {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+        {/* Clear Scan Confirmation Dialog */}
+        <AlertDialog open={clearScanOpen} onOpenChange={setClearScanOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Clear All Scanned Tickets?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Are you sure you want to clear all scanned tickets? This will reset all ticket counts and totals to zero. The scanner will remain active for new scans.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={handleClearScan} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                Confirm
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </Layout>
   );
